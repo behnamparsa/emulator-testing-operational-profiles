@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
+from pipeline.gha_utils import sanitize_gha_expr
 
 import requests
 
