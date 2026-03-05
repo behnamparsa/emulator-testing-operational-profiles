@@ -81,6 +81,16 @@ SLEEP_BETWEEN_WORKFLOWS_SEC = 0.05
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+def unique_preserve(items):
+    """Return a list of unique items preserving first-seen order."""
+    seen = set()
+    out = []
+    for x in items:
+        if x not in seen:
+            out.append(x)
+            seen.add(x)
+    return out
+
 def iso_to_dt(iso: Optional[str]) -> Optional[datetime]:
     if not iso:
         return None
