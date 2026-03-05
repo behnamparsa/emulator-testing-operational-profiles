@@ -1,10 +1,10 @@
-name: Refresh (split stages)
+name: Refresh (split stages) dataset and Section V outputs
 
 on:
   workflow_dispatch:
-  # enable after success:
+  # Enable after first successful manual run
   # schedule:
-  #   - cron: '0 9 * * 1'
+  #   - cron: '0 9 * * 1'  # Monday 09:00 UTC
 
 permissions:
   contents: write
@@ -14,125 +14,161 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Stage 1
+      - name: Prepare workdir with URL list
+        run: |
+          mkdir -p workdir
+          cp data/processed/URL_List.csv workdir/URL_List.csv
+
+      - name: Run Stage 1 (verified workflows)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ROOT_DIR: ${{ github.workspace }}/workdir
         run: |
-          mkdir -p data/checkpoints
           python -m pipeline.stage1_verified_workflows
 
-      - name: Upload Stage 1 checkpoint
+      - name: Upload Stage 1 outputs
         uses: actions/upload-artifact@v4
         with:
           name: stage1
-          path: data/checkpoints/stage1.csv
+          path: |
+            workdir/verified_workflows_v16.csv
 
   stage2:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     needs: stage1
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Download Stage 1 checkpoint
+      - name: Prepare workdir
+        run: |
+          mkdir -p workdir
+
+      - name: Download Stage 1 outputs
         uses: actions/download-artifact@v4
         with:
           name: stage1
-          path: data/checkpoints
+          path: workdir
 
-      - name: Run Stage 2
+      - name: Run Stage 2 (run inventory)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ROOT_DIR: ${{ github.workspace }}/workdir
         run: |
           python -m pipeline.stage2_run_inventory
 
-      - name: Upload Stage 2 checkpoint
+      - name: Upload Stage 2 outputs
         uses: actions/upload-artifact@v4
         with:
           name: stage2
-          path: data/checkpoints/stage2.csv
+          path: |
+            workdir/run_inventory.csv
 
   stage3:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     needs: stage2
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Download Stage 2 checkpoint
+      - name: Prepare workdir
+        run: |
+          mkdir -p workdir
+
+      - name: Download Stage 2 outputs
         uses: actions/download-artifact@v4
         with:
           name: stage2
-          path: data/checkpoints
+          path: workdir
 
-      - name: Run Stage 3
+      - name: Run Stage 3 (telemetry + per-style)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ROOT_DIR: ${{ github.workspace }}/workdir
         run: |
           python -m pipeline.stage3_run_telemetry
 
-      - name: Upload Stage 3 checkpoint
+      - name: Upload Stage 3 outputs
         uses: actions/upload-artifact@v4
         with:
           name: stage3
-          path: data/checkpoints/stage3.csv
+          path: |
+            workdir/run_metrics_v16_stage3_enhanced.csv
+            workdir/run_steps_v16_stage3_breakdown.csv
+            workdir/run_per_style_v1_stage3.csv
 
   stage4_build:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     needs: stage3
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Download Stage 3 checkpoint
+      - name: Prepare workdir
+        run: |
+          mkdir -p workdir
+
+      - name: Download Stage 3 outputs
         uses: actions/download-artifact@v4
         with:
           name: stage3
-          path: data/checkpoints
+          path: workdir
 
       - name: Run Stage 4 + build dataset
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ROOT_DIR: ${{ github.workspace }}/workdir
         run: |
-          mkdir -p data/processed
           python -m pipeline.stage4_workload_signature
           python -m pipeline.build_total_dataset
 
@@ -140,20 +176,23 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dataset
-          path: data/processed/MainDataset.csv
+          path: |
+            workdir/MainDataset.csv
 
   analysis_publish:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     needs: stage4_build
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -164,12 +203,12 @@ jobs:
           name: dataset
           path: data/processed
 
-      - name: Run analysis + Section V
+      - name: Run analysis + Section V generator
         run: |
           python scripts/run_analysis.py
           python scripts/run_section_v.py
 
-      - name: Commit outputs (dataset + profiles + rules)
+      - name: Commit updated artifacts
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |

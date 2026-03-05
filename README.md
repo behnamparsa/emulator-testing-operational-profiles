@@ -13,3 +13,10 @@ This repository automates:
 - `outputs/rules/decision_support_rules.json`
 - `outputs/rules/decision_support_rules.md`
 - `outputs/reports/latest_refresh_report.md`
+
+
+## Split-stage GitHub Actions workflow (recommended)
+
+Use `.github/workflows/refresh_split.yml` to run the pipeline in multiple jobs (Stage 1→4, then analysis) using GitHub Actions artifacts as checkpoints. This avoids hosted runner time limits.
+
+Run it from GitHub Actions using **workflow_dispatch** first. After the first successful run, optionally enable the cron schedule in the YAML.
