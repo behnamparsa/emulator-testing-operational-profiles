@@ -1,0 +1,22 @@
+[
+  {
+    "style": "GMD",
+    "n": 267,
+    "run_median_seconds": 1215.0,
+    "ttfts_median_seconds": 56.0,
+    "window_median_seconds": 1152.0,
+    "verdict_success_rate": 0.9775280898876404,
+    "dominant_component": "instru_exec_window_seconds",
+    "first_optimization_target": "Optimize test execution first"
+  },
+  {
+    "style": "Third-Party",
+    "n": 294,
+    "run_median_seconds": 2112.5,
+    "ttfts_median_seconds": 465.5,
+    "window_median_seconds": 213.5,
+    "verdict_success_rate": 0.12244897959183673,
+    "dominant_component": "instru_exec_window_seconds",
+    "first_optimization_target": "Optimize test execution first"
+  }
+]

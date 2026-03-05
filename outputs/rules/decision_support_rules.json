@@ -1,0 +1,28 @@
+[
+  {
+    "style": "GMD",
+    "if_you_prioritize": "first optimization target",
+    "recommended_first_target": "Optimize test execution first",
+    "evidence": {
+      "dominant_component": "instru_exec_window_seconds",
+      "run_median_seconds": 1215.0,
+      "ttfts_median_seconds": 56.0,
+      "window_median_seconds": 1152.0,
+      "success_rate": 0.9775280898876404,
+      "n": 267
+    }
+  },
+  {
+    "style": "Third-Party",
+    "if_you_prioritize": "first optimization target",
+    "recommended_first_target": "Optimize test execution first",
+    "evidence": {
+      "dominant_component": "instru_exec_window_seconds",
+      "run_median_seconds": 2112.5,
+      "ttfts_median_seconds": 465.5,
+      "window_median_seconds": 213.5,
+      "success_rate": 0.12244897959183673,
+      "n": 294
+    }
+  }
+]

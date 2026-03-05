@@ -1,0 +1,62 @@
+{
+  "dataset_rows": 8904,
+  "emulator_rows": 570,
+  "controlled_rows": 561,
+  "run_duration": {
+    "metric": "run_duration_seconds",
+    "by_style": [
+      {
+        "style": "GMD",
+        "n": 267,
+        "median": 1215.0,
+        "p95": 1568.6999999999998,
+        "iqr": 182.0
+      },
+      {
+        "style": "Third-Party",
+        "n": 294,
+        "median": 2112.5,
+        "p95": 3787.4999999999927,
+        "iqr": 1552.5
+      }
+    ]
+  },
+  "ttfts": {
+    "metric": "ttfts_seconds",
+    "by_style": [
+      {
+        "style": "GMD",
+        "n": 267,
+        "median": 56.0,
+        "p95": 142.0,
+        "iqr": 77.0
+      },
+      {
+        "style": "Third-Party",
+        "n": 294,
+        "median": 465.5,
+        "p95": 2433.8999999999974,
+        "iqr": 615.5
+      }
+    ]
+  },
+  "window": {
+    "metric": "instru_window_seconds",
+    "by_style": [
+      {
+        "style": "GMD",
+        "n": 267,
+        "median": 1152.0,
+        "p95": 1504.3999999999996,
+        "iqr": 218.5
+      },
+      {
+        "style": "Third-Party",
+        "n": 294,
+        "median": 213.5,
+        "p95": 2554.8999999999864,
+        "iqr": 766.5
+      }
+    ]
+  }
+}
