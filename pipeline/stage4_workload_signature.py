@@ -49,6 +49,7 @@ from pipeline.text_utils import first_nonempty
 from pipeline.text_utils import normalize_full_name
 from pipeline.text_utils import to_int_loose
 from pipeline.gha_utils import sanitize_gha_expr
+from pipeline.text_utils import parse_int_strict
 import xml.etree.ElementTree as ET
 
 import requests

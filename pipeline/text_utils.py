@@ -4,6 +4,8 @@ import re
 from typing import List, Optional
 from typing import Any, Dict, Iterable, Optional
 
+
+
 _STYLE_SPLIT_RE = re.compile(r"[,\|;/]+")
 _INT_RE = re.compile(r"-?\d+")
 
@@ -20,7 +22,47 @@ def first_nonempty(row: Dict[str, Any], keys: Iterable[str]) -> str:
             return s
     return ""
 
-from typing import Any, Optional
+
+
+_INT_EXTRACT_RE = re.compile(r"-?\d+")
+
+def parse_int_strict(x: object) -> Optional[int]:
+    """
+    Strict-ish integer parser used in signature logic.
+    Accepts: '12', '12.0', '1,234', '1_234', 'jobs: 8'
+    Returns None if no integer can be parsed.
+    """
+    if x is None:
+        return None
+    s = str(x).strip()
+    if not s:
+        return None
+
+    s = s.replace(",", "").replace("_", "")
+
+    # direct int
+    try:
+        if s.isdigit() or (s.startswith("-") and s[1:].isdigit()):
+            return int(s)
+    except Exception:
+        pass
+
+    # float that is actually an int (e.g., "12.0")
+    try:
+        f = float(s)
+        if f.is_integer():
+            return int(f)
+    except Exception:
+        pass
+
+    # extract first integer substring
+    m = _INT_EXTRACT_RE.search(s)
+    if not m:
+        return None
+    try:
+        return int(m.group(0))
+    except Exception:
+        return None
 
 def to_int_loose(x: Any, default: Optional[int] = None) -> Optional[int]:
     """
