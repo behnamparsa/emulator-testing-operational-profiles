@@ -37,6 +37,42 @@ def split_styles(styles_text: str) -> List[str]:
     return out
 
 
+
+
+_RE_FULLNAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+def normalize_full_name(s: str) -> str:
+    """
+    Normalize a GitHub repo full_name string (owner/repo).
+    - trims whitespace
+    - strips protocol/host if accidentally included
+    - removes trailing '.git'
+    - returns '' if cannot form owner/repo
+    """
+    if s is None:
+        return ""
+    x = str(s).strip()
+
+    # If a URL was provided, extract the path tail
+    # e.g., https://github.com/owner/repo -> owner/repo
+    x = x.replace("https://github.com/", "").replace("http://github.com/", "")
+    x = x.replace("github.com/", "").strip()
+
+    # Remove trailing .git
+    if x.endswith(".git"):
+        x = x[:-4].strip()
+
+    # Remove leading/trailing slashes
+    x = x.strip("/")
+
+    # If there are extra path segments, keep only first two
+    parts = [p for p in x.split("/") if p]
+    if len(parts) < 2:
+        return ""
+    x = f"{parts[0]}/{parts[1]}"
+
+    return x if _RE_FULLNAME.match(x) else x
+
 def safe_int_from_str(x: object) -> Optional[int]:
     """
     Robust integer parser for CSV fields:
