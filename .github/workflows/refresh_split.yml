@@ -1,4 +1,4 @@
-name: Refresh (split stages) dataset only
+name: dataprocess-refresh-split
 
 on:
   workflow_dispatch:
@@ -170,23 +170,43 @@ jobs:
           python -m pipeline.stage4_workload_signature
           python -m pipeline.build_total_dataset
 
-      - name: Copy dataset into repo path
+      # Persist ALL study CSVs into repo
+      - name: Persist study CSVs into repo
         run: |
           mkdir -p data/processed
-          cp workdir/MainDataset.csv data/processed/MainDataset.csv
+          mkdir -p data/study_exports
 
-      - name: Commit updated dataset
+          # Final dataset used by analysis
+          cp workdir/MainDataset.csv data/processed/MainDataset.csv
+          cp workdir/MainDataset.csv data/study_exports/MainDataset.csv
+
+          # Stage outputs (study artifacts)
+          cp workdir/verified_workflows_v16.csv data/study_exports/verified_workflows_v16.csv || true
+          cp workdir/run_inventory.csv data/study_exports/run_inventory.csv || true
+
+          cp workdir/run_metrics_v16_stage3_enhanced.csv data/study_exports/run_metrics_v16_stage3_enhanced.csv || true
+          cp workdir/run_steps_v16_stage3_breakdown.csv data/study_exports/run_steps_v16_stage3_breakdown.csv || true
+          cp workdir/run_per_style_v1_stage3.csv data/study_exports/run_per_style_v1_stage3.csv || true
+
+      - name: Commit updated dataset + study exports
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/processed/MainDataset.csv
-          git diff --cached --quiet || git commit -m "Update dataset snapshot"
+          git add data/processed/MainDataset.csv data/study_exports
+          git diff --cached --quiet || git commit -m "Update dataset + study CSV exports"
           git push
 
-      - name: Upload dataset artifact
+      - name: Upload dataset artifact bundle
         uses: actions/upload-artifact@v4
         with:
-          name: dataset
-          path: workdir/MainDataset.csv
+          name: all_csv
+          path: |
+            data/processed/MainDataset.csv
+            data/study_exports/verified_workflows_v16.csv
+            data/study_exports/run_inventory.csv
+            data/study_exports/run_metrics_v16_stage3_enhanced.csv
+            data/study_exports/run_steps_v16_stage3_breakdown.csv
+            data/study_exports/run_per_style_v1_stage3.csv
+            data/study_exports/MainDataset.csv
