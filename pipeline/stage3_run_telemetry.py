@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 from pipeline.gha_utils import sanitize_gha_expr
-from pipeline.text_utils import split_styles
+from pipeline.text_utils import split_styles, safe_int_from_str
 from pipeline.csv_utils import read_csv_rows, ensure_csv, ensure_csv_header, append_row, load_existing_keys, safe_join_names, unique_preserve
 
 import requests

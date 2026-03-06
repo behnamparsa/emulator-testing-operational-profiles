@@ -1,22 +1,43 @@
-from __future__ import annotations
-
 import re
-from typing import List
+from typing import Optional
 
-_STYLE_SPLIT_RE = re.compile(r"[,\|;/]+")
+_INT_RE = re.compile(r"-?\d+")
 
-def split_styles(styles_text: str) -> List[str]:
+def safe_int_from_str(x: object) -> Optional[int]:
     """
-    Parse the Stage-1/Stage-2 'styles' field into a list of styles.
-    Accepts comma/pipe/semicolon separated values and de-dupes preserving order.
+    Robust integer parser used for CSV fields that may contain:
+    '', None, '12', '12.0', '1,234', '1_234', 'jobs: 8', etc.
+    Returns None if no integer can be parsed.
     """
-    if not styles_text:
-        return []
-    parts = [p.strip() for p in _STYLE_SPLIT_RE.split(str(styles_text)) if p.strip()]
-    seen = set()
-    out: List[str] = []
-    for p in parts:
-        if p not in seen:
-            out.append(p)
-            seen.add(p)
-    return out
+    if x is None:
+        return None
+    s = str(x).strip()
+    if not s:
+        return None
+
+    # normalize common formats
+    s = s.replace(",", "").replace("_", "")
+
+    # fast path
+    try:
+        if s.isdigit() or (s.startswith("-") and s[1:].isdigit()):
+            return int(s)
+    except Exception:
+        pass
+
+    # handle float-looking ints like '12.0'
+    try:
+        f = float(s)
+        if f.is_integer():
+            return int(f)
+    except Exception:
+        pass
+
+    # extract first integer substring
+    m = _INT_RE.search(s)
+    if not m:
+        return None
+    try:
+        return int(m.group(0))
+    except Exception:
+        return None
