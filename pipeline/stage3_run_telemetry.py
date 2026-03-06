@@ -85,6 +85,30 @@ import csv
 from pathlib import Path
 from typing import List
 
+
+import re
+from typing import List
+
+_STYLE_SPLIT_RE = re.compile(r"[,\|;/]+")
+
+def split_styles(styles_text: str) -> List[str]:
+    """
+    Parse the style label string into a list of styles.
+    Accepts comma/pipe/semicolon separated values.
+    Preserves canonical names used in the paper.
+    """
+    if not styles_text:
+        return []
+    parts = [p.strip() for p in _STYLE_SPLIT_RE.split(str(styles_text)) if p.strip()]
+    # de-dupe preserving order
+    seen = set()
+    out = []
+    for p in parts:
+        if p not in seen:
+            out.append(p)
+            seen.add(p)
+    return out
+
 def ensure_csv(path: Path, fieldnames: List[str]) -> None:
     """
     Create/overwrite a CSV file with the given header.
