@@ -22,6 +22,18 @@ def read_csv_rows(path: Path) -> Tuple[List[Dict[str, str]], List[str]]:
     return rows, fieldnames
 
 
+def write_csv(path: Path, fieldnames: List[str], rows: Iterable[Dict]) -> None:
+    """
+    Write rows to CSV (overwrite). Ensures directory exists and writes header.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for row in rows:
+            w.writerow(row)
+
 def ensure_csv(path: Path, fieldnames: List[str]) -> None:
     """
     Create/overwrite a CSV file with the given header.
