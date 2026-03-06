@@ -45,6 +45,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+from pipeline.text_utils import first_nonempty
 import xml.etree.ElementTree as ET
 
 import requests
