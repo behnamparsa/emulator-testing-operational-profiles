@@ -518,7 +518,40 @@ def _job_identity_from_step_row(row: dict) -> str:
 
     return ""
 
+from typing import Optional
 
+def bucket_job_count(n: Optional[int]) -> str:
+    if n is None:
+        return "unknown"
+    if n <= 1:
+        return "1"
+    if 2 <= n <= 3:
+        return "2_3"
+    if 4 <= n <= 6:
+        return "4_6"
+    return ">6"
+
+def bucket_step_count(n: Optional[int]) -> str:
+    if n is None:
+        return "unknown"
+    if n <= 20:
+        return "<=20"
+    if 21 <= n <= 40:
+        return "21_40"
+    if 41 <= n <= 80:
+        return "41_80"
+    return ">80"
+
+def bucket_suite_size(n: Optional[int]) -> str:
+    if n is None or n <= 0:
+        return "unknown"
+    if n <= 100:
+        return "1_100"
+    if n <= 500:
+        return "101_500"
+    if n <= 2000:
+        return "501_2000"
+    return ">2000"
 # =========================
 # MAIN
 # =========================
