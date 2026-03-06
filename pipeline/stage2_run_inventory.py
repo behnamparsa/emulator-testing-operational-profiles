@@ -81,6 +81,25 @@ SLEEP_BETWEEN_WORKFLOWS_SEC = 0.05
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+def safe_join_names(items, sep=","):
+    """
+    Join a list of strings into a single string, removing empties and duplicates
+    (preserving order). Safe for CSV fields.
+    """
+    if not items:
+        return ""
+    # normalize + drop empties
+    cleaned = []
+    for x in items:
+        if x is None:
+            continue
+        s = str(x).strip()
+        if s:
+            cleaned.append(s)
+    # dedupe preserving order
+    cleaned = unique_preserve(cleaned)
+    return sep.join(cleaned)
+
 def unique_preserve(items):
     """Return a list of unique items preserving first-seen order."""
     seen = set()
