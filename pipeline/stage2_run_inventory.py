@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Union, Tuple
+from pipeline.csv_utils import unique_preserve, safe_join_names, ensure_csv_header, append_row, load_existing_keys, read_csv_rows, ensure_csv
 
 import requests
 
