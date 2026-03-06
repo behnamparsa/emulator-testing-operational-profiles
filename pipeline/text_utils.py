@@ -2,10 +2,23 @@ from __future__ import annotations
 
 import re
 from typing import List, Optional
+from typing import Any, Dict, Iterable, Optional
 
 _STYLE_SPLIT_RE = re.compile(r"[,\|;/]+")
 _INT_RE = re.compile(r"-?\d+")
 
+def first_nonempty(row: Dict[str, Any], keys: Iterable[str]) -> str:
+    """
+    Return the first non-empty string value from row[k] across keys, else ''.
+    """
+    for k in keys:
+        v = row.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s:
+            return s
+    return ""
 
 def split_styles(styles_text: str) -> List[str]:
     """
