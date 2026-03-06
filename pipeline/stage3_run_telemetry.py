@@ -79,6 +79,19 @@ GHA_EXPR_RE = re.compile(r"\${{\s*[^}]+}}")  # sanitize GitHub Actions expressio
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+import csv
+from pathlib import Path
+from typing import List
+
+def ensure_csv(path: Path, fieldnames: List[str]) -> None:
+    """
+    Create/overwrite a CSV file with the given header.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+
 
 import csv
 from pathlib import Path
