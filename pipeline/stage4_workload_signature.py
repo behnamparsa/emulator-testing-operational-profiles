@@ -471,6 +471,51 @@ def extract_junit_cases_from_artifacts(gh: GitHubClient, full_name: str, run_id:
         return total_cases, "artifacts"
     return None, "none"
 
+
+def _job_identity_from_step_row(row: dict) -> str:
+    """
+    Stable job identity derived from a step-telemetry row.
+
+    Priority (most stable to least):
+      1) job_id
+      2) job_url
+      3) run_id + job_name + job_attempt
+      4) job_name
+      5) fallback: empty string
+    """
+    def _get(*keys):
+        for k in keys:
+            v = row.get(k)
+            if v is None:
+                continue
+            s = str(v).strip()
+            if s:
+                return s
+        return ""
+
+    job_id = _get("job_id", "workflow_job_id")
+    if job_id:
+        return f"job_id:{job_id}"
+
+    job_url = _get("job_url", "html_url", "job_html_url")
+    if job_url:
+        return f"job_url:{job_url}"
+
+    run_id = _get("run_id", "workflow_run_id")
+    job_name = _get("job_name", "name")
+    job_attempt = _get("job_attempt", "attempt")
+
+    if run_id and job_name:
+        if job_attempt:
+            return f"run:{run_id}|job:{job_name}|attempt:{job_attempt}"
+        return f"run:{run_id}|job:{job_name}"
+
+    if job_name:
+        return f"job:{job_name}"
+
+    return ""
+
+
 # =========================
 # MAIN
 # =========================
