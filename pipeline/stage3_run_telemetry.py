@@ -80,6 +80,23 @@ def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+import csv
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+def read_csv_rows(path: Path) -> Tuple[List[Dict[str, str]], List[str]]:
+    """
+    Read a CSV into a list of dict rows and return (rows, fieldnames).
+    Matches how Stage 1/2 typically load CSVs.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"Input CSV not found: {path}")
+    with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
+        rdr = csv.DictReader(f)
+        rows = [{(k or ""): (v or "") for k, v in r.items()} for r in rdr]
+        fieldnames = list(rdr.fieldnames or [])
+    return rows, fieldnames
+
 def iso_to_dt(iso: Optional[str]) -> Optional[datetime]:
     if not iso:
         return None
