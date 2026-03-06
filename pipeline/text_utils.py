@@ -20,6 +20,37 @@ def first_nonempty(row: Dict[str, Any], keys: Iterable[str]) -> str:
             return s
     return ""
 
+_RE_OWNER_REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+def normalize_full_name(s: str) -> str:
+    """
+    Normalize GitHub repo identifier into 'owner/repo'.
+    Accepts 'owner/repo', URLs, and trims '.git' + extra path segments.
+    """
+    if s is None:
+        return ""
+    x = str(s).strip()
+
+    # Strip common URL prefixes
+    x = x.replace("https://github.com/", "").replace("http://github.com/", "")
+    x = x.replace("github.com/", "").strip()
+
+    # Remove trailing .git
+    if x.endswith(".git"):
+        x = x[:-4].strip()
+
+    # Remove leading/trailing slashes
+    x = x.strip("/")
+
+    # Keep only first two path segments
+    parts = [p for p in x.split("/") if p]
+    if len(parts) < 2:
+        return ""
+    x = f"{parts[0]}/{parts[1]}"
+
+    # Return normalized string (even if unusual chars exist)
+    return x if _RE_OWNER_REPO.match(x) else x
+
 def split_styles(styles_text: str) -> List[str]:
     """
     Parse the Stage-1/Stage-2 'styles' field into a list of styles.
