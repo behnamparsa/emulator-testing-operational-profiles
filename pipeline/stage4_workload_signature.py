@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 from pipeline.text_utils import first_nonempty
 from pipeline.text_utils import normalize_full_name
+from pipeline.text_utils import to_int_loose
 import xml.etree.ElementTree as ET
 
 import requests

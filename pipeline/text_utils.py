@@ -20,6 +20,20 @@ def first_nonempty(row: Dict[str, Any], keys: Iterable[str]) -> str:
             return s
     return ""
 
+from typing import Any, Optional
+
+def to_int_loose(x: Any, default: Optional[int] = None) -> Optional[int]:
+    """
+    Loose integer conversion:
+    - returns parsed int if possible
+    - otherwise returns `default`
+    """
+    from pipeline.text_utils import safe_int_from_str  # safe even within module due to same file
+    v = safe_int_from_str(x)
+    return default if v is None else v
+
+
+
 _RE_OWNER_REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 def normalize_full_name(s: str) -> str:
