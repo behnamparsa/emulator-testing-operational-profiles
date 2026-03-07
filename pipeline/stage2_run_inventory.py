@@ -36,7 +36,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Union, Tuple
-from pipeline.csv_utils import unique_preserve, safe_join_names, ensure_csv_header, append_row, load_existing_keys, read_csv_rows, ensure_csv
 
 import requests
 
@@ -49,11 +48,9 @@ except ImportError:
 # =========================
 # CONFIG
 # =========================
-from config.runtime import get_root_dir, get_tokens_env_path, load_github_tokens
+TOKENS_ENV_PATH = Path(r"C:\GitHub\Android-Mobile-Apps\All_Tokens.env")
 
-TOKENS_ENV_PATH = get_tokens_env_path()
-
-ROOT_DIR = get_root_dir()
+ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
 
 IN_VERIFIED_WORKFLOWS_CSV = ROOT_DIR / "verified_workflows_v16.csv"
 OUT_RUN_INVENTORY_CSV = ROOT_DIR / "run_inventory.csv"
@@ -81,35 +78,6 @@ SLEEP_BETWEEN_WORKFLOWS_SEC = 0.05
 # =========================
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-def safe_join_names(items, sep=","):
-    """
-    Join a list of strings into a single string, removing empties and duplicates
-    (preserving order). Safe for CSV fields.
-    """
-    if not items:
-        return ""
-    # normalize + drop empties
-    cleaned = []
-    for x in items:
-        if x is None:
-            continue
-        s = str(x).strip()
-        if s:
-            cleaned.append(s)
-    # dedupe preserving order
-    cleaned = unique_preserve(cleaned)
-    return sep.join(cleaned)
-
-def unique_preserve(items):
-    """Return a list of unique items preserving first-seen order."""
-    seen = set()
-    out = []
-    for x in items:
-        if x not in seen:
-            out.append(x)
-            seen.add(x)
-    return out
 
 def iso_to_dt(iso: Optional[str]) -> Optional[datetime]:
     if not iso:
@@ -151,14 +119,45 @@ def load_existing_keys(csv_path: Path, key_field: str) -> Set[str]:
                 keys.add(k)
     return keys
 
-def load_tokens_from_env_file(env_path: Optional[Path], max_tokens: int = 3) -> List[str]:
-    tokens = load_github_tokens(env_path=env_path, max_tokens=max_tokens)
+def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
+    if not env_path.exists():
+        raise FileNotFoundError(f"Tokens env file not found: {env_path}")
+
+    tokens: List[str] = []
+    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k.startswith("GITHUB_TOKEN_") and v:
+            tokens.append(v)
+            if len(tokens) >= max_tokens:
+                break
+
     if not tokens:
-        raise RuntimeError(
-            "No GitHub tokens found. Provide All_Tokens.env with GITHUB_TOKEN_1..7 "
-            "or set TOKENS_ENV_PATH to its location."
-        )
+        raise ValueError(f"No tokens found in {env_path}. Expected keys like GITHUB_TOKEN_1=...")
     return tokens
+
+def unique_preserve(seq: Iterable[str]) -> List[str]:
+    seen: Set[str] = set()
+    out: List[str] = []
+    for x in seq:
+        if x is None:
+            continue
+        s = str(x)
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+def safe_join_names(names: List[str], max_len: int = 700) -> str:
+    s = ",".join(unique_preserve([n.strip() for n in names if n and str(n).strip()]))
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 3] + "..."
+
 
 # =========================
 # Name normalization / matching

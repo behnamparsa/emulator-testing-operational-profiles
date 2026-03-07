@@ -36,7 +36,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
-from pipeline.gha_utils import sanitize_gha_expr
 
 import requests
 
@@ -48,10 +47,8 @@ except Exception:
 # =========================
 # CONFIG (KEEP THESE AS YOUR STAGE-1 CONTRACT)
 # =========================
-from config.runtime import get_root_dir, get_tokens_env_path, load_github_tokens
-
-TOKENS_ENV_PATH = get_tokens_env_path()
-ROOT_DIR = get_root_dir()
+TOKENS_ENV_PATH = Path(r"C:\GitHub\Android-Mobile-Apps\All_Tokens.env")
+ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
 
 IN_URL_LIST_CSV = ROOT_DIR / "URL_List.csv"               # input list of repos
 OUT_STAGE1_CSV  = ROOT_DIR / "verified_workflows_v16.csv" # Stage-1 output name (original)
@@ -144,14 +141,28 @@ def parse_repo_full_name(url: str) -> str:
             return ""
     return ""
 
-def load_tokens_from_env_file(env_path: Optional[Path], max_tokens: int = 3) -> List[str]:
-    tokens = load_github_tokens(env_path=env_path, max_tokens=max_tokens)
+def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
+    if not env_path.exists():
+        raise FileNotFoundError(f"Tokens env file not found: {env_path}")
+    tokens: List[str] = []
+    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k.startswith("GITHUB_TOKEN_") and v:
+            tokens.append(v)
+            if len(tokens) >= max_tokens:
+                break
     if not tokens:
-        raise RuntimeError(
-            "No GitHub tokens found. Provide All_Tokens.env with GITHUB_TOKEN_1..7 "
-            "or set TOKENS_ENV_PATH to its location."
-        )
+        raise ValueError(f"No tokens found in {env_path}. Expected keys like GITHUB_TOKEN_1=...")
     return tokens
+
+def sanitize_gha_expr(text: str) -> str:
+    # "connected${{ matrix.flavor }}DebugAndroidTest" -> "connectedDebugAndroidTest"
+    return GHA_EXPR_RE.sub("", text or "")
 
 # =========================
 # GitHub API client

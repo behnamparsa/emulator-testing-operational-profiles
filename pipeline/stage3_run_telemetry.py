@@ -1,28 +1,20 @@
 # ============================================================
-# Stage 3 (FULLY ADJUSTED): timing model + S2_ fallback integration
+# Stage 3 (ADJUSTED FOR STYLE-SPECIFIC WINDOW ENDING)
 #
-# Adjustments (this version)
-# 1) Keeps GHA expression sanitization
-# 2) Keeps Detox + Flutter Integration Test execution detection (Android-gated)
-# 3) Keeps Stage-1 test_invocation_step_names priority anchor hint
-# 4) Adds MODIFIED TTFTS support (anchor job start -> anchoring step start)
-#    with proper fallback to S2_ fields from Stage 2:
-#      - time_to_first_instru_from_anchor_job_seconds
-#      - S2_time_to_first_instru_from_anchor_job_seconds
-#      - anchor_job_started_at / S2_anchor_job_started_at
-# 5) Adds runtime count metric for jobs from run start to anchor-step job (inclusive):
-#      - jobs_to_anchor_job_count
-#    and source field:
-#      - jobs_to_anchor_job_count_source
-# 6) Includes the Stage-1 pass-through field (if present in Stage 2 input):
-#      - jobs_before_anchor_count
-#    in run and run-per-style outputs automatically via preserved columns
-# 7) FIX (this version ONLY): Constrain instrumentation window end (instru_end)
-#    to instrumentation-job scope so unrelated tail jobs do not extend the
-#    instrumentation window. Preference:
-#      - anchor job if known
-#      - else exec-step job(s)
-#    (No other changes.)
+# Key updates in this version
+# 1) Preserves existing output file names / locations
+# 2) Preserves TTFTS logic and provenance behavior
+# 3) Preserves run-level output and run×style output
+# 4) Keeps:
+#      - instru_duration_seconds = FULL instrumentation-path window
+#      - core_instru_window_seconds / instru_exec_window_seconds = CORE execution span only
+# 5) Adds style-aware instrumentation end selection:
+#      - default (Community / Custom / GMD / Real-Device):
+#          constrain instrumentation end to anchor job, else exec-step jobs
+#      - Third-Party:
+#          allow controlled multi-job extension across instrumentation-related
+#          provider/result jobs after execution, instead of strict same-job limit
+# 6) Applies style-aware logic cleanly for single-style and multi-style runs
 # ============================================================
 
 import base64
@@ -34,10 +26,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
-from pipeline.gha_utils import sanitize_gha_expr
-from pipeline.text_utils import split_styles, safe_int_from_str
-from pipeline.csv_utils import read_csv_rows, ensure_csv, ensure_csv_header, append_row, load_existing_keys, safe_join_names, unique_preserve, write_csv
-
 
 import requests
 
@@ -49,16 +37,14 @@ except ImportError:
 # =========================
 # CONFIG
 # =========================
-from config.runtime import get_root_dir, get_tokens_env_path, load_github_tokens
-
-TOKENS_ENV_PATH = get_tokens_env_path()
-ROOT_DIR = get_root_dir()
+TOKENS_ENV_PATH = Path(r"C:\GitHub\Android-Mobile-Apps\All_Tokens.env")
+ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
 
 IN_STAGE2_CSV = ROOT_DIR / "run_inventory.csv"
 
-OUT_STAGE3A_RUNS_CSV = ROOT_DIR / "run_metrics_v16_stage3_enhanced.csv"          # Run metrics
-OUT_STAGE3B_STEPS_CSV = ROOT_DIR / "run_steps_v16_stage3_breakdown.csv"          # Step metrics
-OUT_STAGE3C_RUN_PER_STYLE_CSV = ROOT_DIR / "run_per_style_v1_stage3.csv"         # Run metrics per style
+OUT_STAGE3A_RUNS_CSV = ROOT_DIR / "run_metrics_v16_stage3_enhanced.csv"
+OUT_STAGE3B_STEPS_CSV = ROOT_DIR / "run_steps_v16_stage3_breakdown.csv"
+OUT_STAGE3C_RUN_PER_STYLE_CSV = ROOT_DIR / "run_per_style_v1_stage3.csv"
 
 MAX_TOKENS_TO_USE = 7
 PROCESS_ONLY_RELEVANT_ROWS = True
@@ -77,66 +63,10 @@ WORKFLOW_YAML_CACHE_MAX = 7000
 # Helpers
 # =========================
 BOM = "\ufeff"
-GHA_EXPR_RE = re.compile(r"\${{\s*[^}]+}}")  # sanitize GitHub Actions expressions
-
+GHA_EXPR_RE = re.compile(r"\${{\s*[^}]+}}")
 
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-import csv
-from pathlib import Path
-from typing import List
-
-
-import re
-from typing import List
-
-_STYLE_SPLIT_RE = re.compile(r"[,\|;/]+")
-
-def split_styles(styles_text: str) -> List[str]:
-    """
-    Parse the style label string into a list of styles.
-    Accepts comma/pipe/semicolon separated values.
-    Preserves canonical names used in the paper.
-    """
-    if not styles_text:
-        return []
-    parts = [p.strip() for p in _STYLE_SPLIT_RE.split(str(styles_text)) if p.strip()]
-    # de-dupe preserving order
-    seen = set()
-    out = []
-    for p in parts:
-        if p not in seen:
-            out.append(p)
-            seen.add(p)
-    return out
-
-def ensure_csv(path: Path, fieldnames: List[str]) -> None:
-    """
-    Create/overwrite a CSV file with the given header.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
-
-
-import csv
-from pathlib import Path
-from typing import Dict, List, Tuple
-
-def read_csv_rows(path: Path) -> Tuple[List[Dict[str, str]], List[str]]:
-    """
-    Read a CSV into a list of dict rows and return (rows, fieldnames).
-    Matches how Stage 1/2 typically load CSVs.
-    """
-    if not path.exists():
-        raise FileNotFoundError(f"Input CSV not found: {path}")
-    with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
-        rdr = csv.DictReader(f)
-        rows = [{(k or ""): (v or "") for k, v in r.items()} for r in rdr]
-        fieldnames = list(rdr.fieldnames or [])
-    return rows, fieldnames
 
 def iso_to_dt(iso: Optional[str]) -> Optional[datetime]:
     if not iso:
@@ -145,7 +75,6 @@ def iso_to_dt(iso: Optional[str]) -> Optional[datetime]:
         return datetime.fromisoformat(iso.replace("Z", "+00:00"))
     except Exception:
         return None
-
 
 def dt_to_seconds(a: Optional[datetime], b: Optional[datetime]) -> Optional[int]:
     if not a or not b:
@@ -156,7 +85,6 @@ def dt_to_seconds(a: Optional[datetime], b: Optional[datetime]) -> Optional[int]
     except Exception:
         return None
 
-
 def unique_preserve(seq: Iterable[str]) -> List[str]:
     seen: Set[str] = set()
     out: List[str] = []
@@ -166,29 +94,93 @@ def unique_preserve(seq: Iterable[str]) -> List[str]:
             out.append(x)
     return out
 
-
 def safe_join_names(names: List[str], max_len: int = 800) -> str:
     s = ",".join(unique_preserve([n.strip() for n in names if n and n.strip()]))
     if len(s) <= max_len:
         return s
     return s[: max_len - 3] + "..."
 
-
-def load_tokens_from_env_file(env_path: Optional[Path], max_tokens: int = 3) -> List[str]:
-    tokens = load_github_tokens(env_path=env_path, max_tokens=max_tokens)
+def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
+    if not env_path.exists():
+        raise FileNotFoundError(f"Tokens env file not found: {env_path}")
+    tokens: List[str] = []
+    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k.startswith("GITHUB_TOKEN_") and v:
+            tokens.append(v)
+            if len(tokens) >= max_tokens:
+                break
     if not tokens:
-        raise RuntimeError(
-            "No GitHub tokens found. Provide All_Tokens.env with GITHUB_TOKEN_1..7 "
-            "or set TOKENS_ENV_PATH to its location."
-        )
+        raise ValueError(f"No tokens found in {env_path}. Expected keys like GITHUB_TOKEN_1=...")
     return tokens
+
+def _clean_key(k: str) -> str:
+    return (k or "").replace(BOM, "").strip()
+
+def read_csv_rows(path: Path) -> Tuple[List[Dict[str, str]], List[str]]:
+    if not path.exists():
+        raise FileNotFoundError(f"Input CSV not found: {path}")
+    with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
+        rdr = csv.DictReader(f)
+        raw_fields = rdr.fieldnames or []
+        fields = [_clean_key(x) for x in raw_fields]
+        rows: List[Dict[str, str]] = []
+        for r in rdr:
+            clean_row = {}
+            for k, v in r.items():
+                ck = _clean_key(k)
+                clean_row[ck] = (v or "")
+            rows.append(clean_row)
+    return rows, fields
+
+def write_csv(path: Path, fieldnames: List[str], rows: List[Dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        w.writeheader()
+        for r in rows:
+            w.writerow(r)
+
+def ensure_csv(path: Path, fieldnames: List[str]) -> None:
+    if path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+
+def append_row(path: Path, fieldnames: List[str], row: Dict[str, str]) -> None:
+    with path.open("a", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        w.writerow(row)
+
+def split_styles(styles_text: str) -> List[str]:
+    return [s.strip() for s in (styles_text or "").split(",") if s.strip()]
+
+def sanitize_gha_expr(text: str) -> str:
+    return GHA_EXPR_RE.sub("", text or "")
+
+def safe_int_from_str(v: str) -> Optional[int]:
+    try:
+        if v is None:
+            return None
+        s = str(v).strip()
+        if s == "":
+            return None
+        return int(float(s))
+    except Exception:
+        return None
 
 # =========================
 # Normalization + matching
 # =========================
 _norm_ws_re = re.compile(r"\s+")
 _norm_punct_re = re.compile(r"[^a-z0-9]+")
-
 
 def normalize_step_key(s: str) -> str:
     s = (s or "").lower().strip()
@@ -198,10 +190,8 @@ def normalize_step_key(s: str) -> str:
     s = _norm_ws_re.sub(" ", s).strip()
     return s
 
-
 def token_set(s: str) -> Set[str]:
     return set([t for t in normalize_step_key(s).split(" ") if t])
-
 
 def jaccard(a: Set[str], b: Set[str]) -> float:
     if not a or not b:
@@ -209,7 +199,6 @@ def jaccard(a: Set[str], b: Set[str]) -> float:
     inter = len(a & b)
     uni = len(a | b)
     return inter / uni if uni else 0.0
-
 
 def is_runner_injected_step(step_name: str) -> bool:
     s = (step_name or "").strip()
@@ -221,9 +210,7 @@ def is_runner_injected_step(step_name: str) -> bool:
         return True
     return False
 
-
 _GENERIC_TOKENS = {"set", "up", "install", "setup", "cache", "checkout", "post", "complete", "job"}
-
 
 def is_too_generic_for_fuzzy(name: str) -> bool:
     toks = token_set(name)
@@ -231,7 +218,6 @@ def is_too_generic_for_fuzzy(name: str) -> bool:
         return True
     non_generic = [t for t in toks if t not in _GENERIC_TOKENS]
     return len(non_generic) <= 1
-
 
 def best_yaml_step_match_with_reason(step_name: str, yaml_steps: Dict[str, Dict[str, str]]) -> Tuple[Optional[Dict[str, str]], str]:
     if not step_name or not yaml_steps:
@@ -286,7 +272,6 @@ def best_yaml_step_match_with_reason(step_name: str, yaml_steps: Dict[str, Dict[
 
     return None, "no_match"
 
-
 # =========================
 # GitHub API client
 # =========================
@@ -296,14 +281,13 @@ class TokenState:
     remaining: Optional[int] = None
     reset_epoch: Optional[int] = None
 
-
 class GitHubClient:
     def __init__(self, tokens: List[str]) -> None:
         self.session = requests.Session()
         self.session.headers.update({
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "stage3-v16-adjusted/1.1",
+            "User-Agent": "stage3-v16-style-aware/1.0",
         })
         self.tokens = [TokenState(t) for t in tokens]
 
@@ -420,14 +404,12 @@ class GitHubClient:
                 return
             page += 1
 
-
 # =========================
 # GitHub endpoints
 # =========================
 def list_run_jobs(gh: GitHubClient, full_name: str, run_id: int) -> List[Dict]:
     url = f"https://api.github.com/repos/{full_name}/actions/runs/{run_id}/jobs"
     return list(gh.paginate(url, params={}, item_key="jobs"))
-
 
 def fetch_workflow_yaml(gh: GitHubClient, full_name: str, workflow_path: str, ref: str) -> str:
     url = f"https://api.github.com/repos/{full_name}/contents/{workflow_path.lstrip('/')}"
@@ -449,13 +431,11 @@ def fetch_workflow_yaml(gh: GitHubClient, full_name: str, workflow_path: str, re
             return ""
     return ""
 
-
 # =========================
 # YAML step extraction
 # =========================
 def _count_leading_spaces(s: str) -> int:
     return len(s) - len(s.lstrip(" "))
-
 
 def parse_workflow_steps(yaml_text: str) -> Dict[str, Dict[str, str]]:
     out: Dict[str, Dict[str, str]] = {}
@@ -573,7 +553,6 @@ def parse_workflow_steps(yaml_text: str) -> Dict[str, Dict[str, str]]:
 
     return out
 
-
 def parse_job_reusable_uses(yaml_text: str) -> Dict[str, str]:
     if not yaml_text:
         return {}
@@ -639,7 +618,6 @@ def parse_job_reusable_uses(yaml_text: str) -> Dict[str, str]:
         i = j
 
     return out
-
 
 # =========================
 # Patterns
@@ -752,8 +730,16 @@ INSTRU_TASK_NAME_HINT_RE = re.compile(
     r")\b"
 )
 
-_SPLIT_COMMA_RE = re.compile(r"\s*,\s*")
+# Additional job-level extension signals for Third-Party continuation
+THIRD_PARTY_CONTINUATION_RE = re.compile(
+    r"(?ism)\b("
+    r"browserstack|bstack|sauce|saucectl|appcenter|firebase\s+test|flank|"
+    r"download.*artifact|fetch.*result|collect.*result|test\s+result|"
+    r"report|junit|xml|poll|wait|status|complete|finali[sz]e"
+    r")\b"
+)
 
+_SPLIT_COMMA_RE = re.compile(r"\s*,\s*")
 
 # =========================
 # Android-ish gating helpers
@@ -767,7 +753,6 @@ def _runtime_evidence_from_text(text: str) -> Dict[str, bool]:
         "real_device": bool(REAL_DEVICE_ADB_RE.search(low)),
         "third_party_invoke": bool(THIRD_PARTY_INSTRU_INVOKE_RE.search(low)),
     }
-
 
 def _flutter_androidish_from_text(text: str, runtime_ev: Dict[str, bool]) -> bool:
     t = sanitize_gha_expr(text or "")
@@ -794,7 +779,6 @@ def _flutter_androidish_from_text(text: str, runtime_ev: Dict[str, bool]) -> boo
 
     return False
 
-
 def _detox_androidish_from_text(text: str, runtime_ev: Dict[str, bool]) -> bool:
     t = sanitize_gha_expr(text or "")
     low = t.lower()
@@ -810,7 +794,6 @@ def _detox_androidish_from_text(text: str, runtime_ev: Dict[str, bool]) -> bool:
 
     return False
 
-
 # =========================
 # Stage-1 anchor name matching
 # =========================
@@ -819,7 +802,6 @@ def parse_stage1_anchor_names(raw: str) -> List[str]:
         return []
     parts = [p.strip() for p in _SPLIT_COMMA_RE.split(raw) if p.strip()]
     return unique_preserve(parts)
-
 
 def step_matches_stage1_anchor(step_name: str, stage1_anchor_names: List[str]) -> Tuple[bool, str]:
     if not step_name or not stage1_anchor_names:
@@ -849,7 +831,6 @@ def step_matches_stage1_anchor(step_name: str, stage1_anchor_names: List[str]) -
         return True, f"stage1_anchor_jaccard:{best_score:.3f}"
 
     return False, ""
-
 
 # =========================
 # Category detection (YAML-based)
@@ -902,12 +883,10 @@ def compute_category_from_yaml(step_name: str, y: Optional[Dict[str, str]]) -> T
 
     return "other", "no_phase_signal"
 
-
 def _snip(s: str, n: int = 240) -> str:
     s = (s or "").replace("\r", "")
     s = _norm_ws_re.sub(" ", s).strip()
     return s if len(s) <= n else (s[: n - 3] + "...")
-
 
 # =========================
 # Step classification + style tagging
@@ -996,7 +975,6 @@ def classify_step(
         "stage1_anchor_match_reason": stage1_anchor_match_reason,
     }
 
-
 def is_exec_step(flags: Dict[str, Union[bool, str]]) -> bool:
     return bool(
         flags.get("explicit_instru")
@@ -1008,7 +986,6 @@ def is_exec_step(flags: Dict[str, Union[bool, str]]) -> bool:
         or flags.get("flutter_integration_androidish")
         or flags.get("detox_androidish")
     )
-
 
 # =========================
 # Anchor selection
@@ -1065,22 +1042,18 @@ def pick_instru_anchor_from_candidates(
 
     return None, "", "", "missing", {}
 
-
 # =========================
 # Metric computation
 # =========================
 STYLE_METRIC_KEYS = [
-    # existing TTFTS (run_started -> anchor step start)
     "first_test_step_started_at",
     "ttfts_seconds",
     "ttfts_source",
 
-    # NEW modified TTFTS (anchor job start -> anchoring step start)
     "modified_ttfts_seconds",
     "modified_ttfts_source",
     "modified_ttfts_quality",
 
-    # NEW job-count-to-anchor metric (inclusive count)
     "jobs_to_anchor_job_count",
     "jobs_to_anchor_job_count_source",
 
@@ -1089,24 +1062,118 @@ STYLE_METRIC_KEYS = [
     "test_exec_started_at",
     "test_exec_ended_at",
 
-    "instru_duration_seconds",
+    "instru_duration_seconds",        # FULL instrumentation-path window
     "pre_test_overhead_seconds",
-    "core_instru_window_seconds",
+    "core_instru_window_seconds",     # CORE execution span only
     "post_test_overhead_seconds",
     "instru_exec_sum_seconds",
-    "instru_exec_window_seconds",
+    "instru_exec_window_seconds",     # same as core_instru_window_seconds
     "instru_exec_step_count",
 
     "env_setup_sum_seconds",
     "artifact_sum_seconds",
 ]
 
+def infer_style_name(flags: Dict[str, Union[bool, str]]) -> str:
+    if flags.get("third_party_instru_invoke") or flags.get("third_party_provider"):
+        return "Third-Party"
+    if flags.get("gmd_setup") or flags.get("gmd_lifecycle_task"):
+        return "GMD"
+    if flags.get("emu_community_action"):
+        return "Emu_Community"
+    if flags.get("emu_custom_script"):
+        return "Emu_Custom"
+    if flags.get("real_device"):
+        return "Real-Device"
+    return ""
+
+def is_third_party_continuation_step(step_name: str, job_name: str, flags: Dict[str, Union[bool, str]]) -> bool:
+    text = "\n".join([step_name or "", job_name or ""])
+    if flags.get("third_party_instru_invoke") or flags.get("third_party_provider"):
+        return True
+    if flags.get("artifact"):
+        return True
+    return bool(THIRD_PARTY_CONTINUATION_RE.search(text))
+
+def compute_style_aware_instru_end(
+    target_style: str,
+    anchor_job_name: str,
+    exec_job_names: Set[str],
+    exec_first: Optional[datetime],
+    exec_last: Optional[datetime],
+    step_times: List[Tuple[Optional[datetime], Optional[datetime], str, str, Dict[str, Union[bool, str]]]],
+) -> Optional[datetime]:
+    """
+    Returns style-aware instrumentation end.
+
+    Default styles:
+      constrain to anchor job if known, else exec-step jobs
+
+    Third-Party:
+      allow controlled multi-job extension across later instrumentation-related
+      provider/result jobs after execution
+    """
+    if exec_first is None:
+        return exec_last
+
+    # Default same-job / exec-job-scope behavior
+    allowed_jobs_default: Optional[Set[str]] = None
+    if anchor_job_name:
+        allowed_jobs_default = {anchor_job_name}
+    elif exec_job_names:
+        allowed_jobs_default = set(exec_job_names)
+
+    latest_end_default: Optional[datetime] = None
+    if allowed_jobs_default:
+        for (st_start, st_end, jn, step_name, flags) in step_times:
+            if not st_start or not st_end:
+                continue
+            if jn not in allowed_jobs_default:
+                continue
+            if st_start >= exec_first:
+                if latest_end_default is None or st_end > latest_end_default:
+                    latest_end_default = st_end
+
+    if target_style != "Third-Party":
+        return latest_end_default or exec_last
+
+    # Third-Party controlled multi-job extension
+    base_jobs: Set[str] = set()
+    if anchor_job_name:
+        base_jobs.add(anchor_job_name)
+    base_jobs |= set(exec_job_names)
+
+    candidate_jobs: Set[str] = set(base_jobs)
+
+    # Include later jobs only if they still look like continuation of remote/provider lifecycle
+    for (st_start, st_end, jn, step_name, flags) in step_times:
+        if not st_start or not st_end or not jn:
+            continue
+        if st_start < exec_first:
+            continue
+        if jn in candidate_jobs:
+            continue
+        if is_third_party_continuation_step(step_name, jn, flags):
+            candidate_jobs.add(jn)
+
+    latest_end_tp: Optional[datetime] = None
+    for (st_start, st_end, jn, _step_name, _flags) in step_times:
+        if not st_start or not st_end:
+            continue
+        if jn not in candidate_jobs:
+            continue
+        if st_start >= exec_first:
+            if latest_end_tp is None or st_end > latest_end_tp:
+                latest_end_tp = st_end
+
+    return latest_end_tp or latest_end_default or exec_last
 
 def compute_metrics_for_event_set(
     base_start: Optional[datetime],
     events: List[Tuple[Optional[datetime], Optional[datetime], Optional[int], str, str, Dict[str, Union[bool, str]]]],
     stage2_instru_detect_method: str,
     s2_fallback: Dict[str, str],
+    target_style: str = "",
 ) -> Dict[str, Union[str, int, None]]:
 
     out: Dict[str, Union[str, int, None]] = {
@@ -1139,7 +1206,6 @@ def compute_metrics_for_event_set(
     }
 
     if not events:
-        # S2 fallbacks
         s2_first = (s2_fallback.get("S2_instru_first_started_at") or "").strip()
         s2_ttfi = (s2_fallback.get("S2_time_to_first_instru_seconds") or "").strip()
 
@@ -1151,7 +1217,6 @@ def compute_metrics_for_event_set(
 
         stage1_jobs_before_anchor_count = safe_int_from_str(s2_fallback.get("jobs_before_anchor_count", ""))
 
-        # legacy ttfts fallback
         if s2_ttfi:
             try:
                 out["ttfts_seconds"] = int(float(s2_ttfi))
@@ -1165,10 +1230,6 @@ def compute_metrics_for_event_set(
                 out["ttfts_seconds"] = tt
                 out["ttfts_source"] = "S2_instru_first_started_at"
 
-        # NEW modified TTFTS fallback order:
-        # 1) S2 mirrored field
-        # 2) direct Stage2 field (if present)
-        # 3) derive from S2 anchor job start + S2 instru first started
         if s2_mod_ttfts:
             try:
                 out["modified_ttfts_seconds"] = int(float(s2_mod_ttfts))
@@ -1192,7 +1253,6 @@ def compute_metrics_for_event_set(
                 out["modified_ttfts_source"] = "S2_anchor_job_started_at_plus_S2_instru_first_started_at"
                 out["modified_ttfts_quality"] = "derived"
 
-        # jobs-to-anchor fallback (inclusive) from Stage1 pass-through if present
         if stage1_jobs_before_anchor_count is not None:
             out["jobs_to_anchor_job_count"] = stage1_jobs_before_anchor_count + 1
             out["jobs_to_anchor_job_count_source"] = "stage1_jobs_before_anchor_count_plus1"
@@ -1218,13 +1278,11 @@ def compute_metrics_for_event_set(
 
     cands: List[Tuple[datetime, str, str, Dict[str, Union[bool, str]]]] = []
 
-    # job timing within the current event set (for modified TTFTS + job count)
     job_first_step_start: Dict[str, datetime] = {}
-
-    # ---- FIX support: collect exec job scope and keep step times for constrained instru_end ----
     exec_job_names: Set[str] = set()
-    step_times: List[Tuple[Optional[datetime], Optional[datetime], str]] = []  # (st_start, st_end, job_name)
-    # ------------------------------------------------------------------------------------------
+
+    # style-aware step time collection
+    step_times: List[Tuple[Optional[datetime], Optional[datetime], str, str, Dict[str, Union[bool, str]]]] = []
 
     for (st_start, st_end, st_dur, step_name, job_name, flags) in events:
         if flags.get("env_setup") and st_dur is not None:
@@ -1250,8 +1308,7 @@ def compute_metrics_for_event_set(
             if job_name:
                 exec_job_names.add(job_name)
 
-        # FIX support: record step timing for later constrained selection of instru_end
-        step_times.append((st_start, st_end, job_name or ""))
+        step_times.append((st_start, st_end, job_name or "", step_name, flags))
 
     out["env_setup_sum_seconds"] = total_env if total_env > 0 else None
     out["artifact_sum_seconds"] = total_art if total_art > 0 else None
@@ -1277,19 +1334,10 @@ def compute_metrics_for_event_set(
 
         if fallback:
             fallback.sort(key=lambda x: x[0])
-            t = fallback[0]
-            # support both legacy (4) and newer (5) tuple formats
-            if len(t) == 5:
-                anchor_dt, _anchor_name, anchor_job_name, _f_source, _f_flags = t
-            elif len(t) == 4:
-                anchor_dt, _anchor_name, anchor_job_name, _f_source = t
-                _f_flags = ""
-            else:
-                # unexpected shape; treat as missing fallback
-                anchor_dt, _anchor_name, anchor_job_name, _f_source, _f_flags = None, "", "", "missing", ""
+            anchor_dt, _anchor_name, anchor_job_name, _f_source, _f_flags = fallback[0]
             anchor_source = "fallback_instru_evidence"
 
-    # legacy ttfts (run_started -> anchor step)
+    # TTFTS
     if anchor_dt and base_start:
         out["instru_started_at"] = anchor_dt.isoformat().replace("+00:00", "Z")
         out["first_test_step_started_at"] = out["instru_started_at"]
@@ -1300,7 +1348,7 @@ def compute_metrics_for_event_set(
             out["ttfts_seconds"] = 0
             out["ttfts_source"] = "workflow_label_proxy"
 
-    # NEW modified TTFTS (anchor job start -> anchor step)
+    # modified TTFTS
     if anchor_dt and anchor_job_name and anchor_job_name in job_first_step_start:
         anchor_job_start_dt = job_first_step_start[anchor_job_name]
         mod = dt_to_seconds(anchor_job_start_dt, anchor_dt)
@@ -1308,7 +1356,6 @@ def compute_metrics_for_event_set(
         out["modified_ttfts_source"] = "runtime_anchor_job_earliest_step_to_anchor_step"
         out["modified_ttfts_quality"] = "runtime_observed"
     else:
-        # Fallback to Stage2/S2 fields
         s2_mod_ttfts = (s2_fallback.get("S2_time_to_first_instru_from_anchor_job_seconds") or "").strip()
         s2_mod_ttfts_quality = (s2_fallback.get("S2_time_to_first_instru_from_anchor_job_quality") or "").strip()
         stage2_mod_ttfts = (s2_fallback.get("time_to_first_instru_from_anchor_job_seconds") or "").strip()
@@ -1344,7 +1391,7 @@ def compute_metrics_for_event_set(
             out["modified_ttfts_source"] = "workflow_label_proxy"
             out["modified_ttfts_quality"] = "workflow_label_proxy"
 
-    # NEW jobs-to-anchor (inclusive)
+    # jobs-to-anchor
     if anchor_job_name and job_first_step_start:
         ordered_jobs = sorted(job_first_step_start.items(), key=lambda kv: kv[1])
         idx = None
@@ -1366,40 +1413,24 @@ def compute_metrics_for_event_set(
     if exec_last:
         out["test_exec_ended_at"] = exec_last.isoformat().replace("+00:00", "Z")
 
-    # ------------------------------------------------------------------
-    # FIX: constrain instru_end to instrumentation job scope
-    #   prefer anchor job (if known), else exec-step job(s)
-    # ------------------------------------------------------------------
-    allowed_jobs: Optional[Set[str]] = None
-    if anchor_job_name:
-        allowed_jobs = {anchor_job_name}
-    elif exec_job_names:
-        allowed_jobs = set(exec_job_names)
-
-    latest_end_in_scope_after_exec: Optional[datetime] = None
-    if exec_first and allowed_jobs:
-        for (st_start, st_end, jn) in step_times:
-            if not st_start or not st_end:
-                continue
-            if jn not in allowed_jobs:
-                continue
-            if st_start >= exec_first:
-                if latest_end_in_scope_after_exec is None or st_end > latest_end_in_scope_after_exec:
-                    latest_end_in_scope_after_exec = st_end
-
-    instru_end: Optional[datetime] = None
-    if latest_end_in_scope_after_exec:
-        instru_end = latest_end_in_scope_after_exec
-    elif exec_last:
-        instru_end = exec_last
-    # ------------------------------------------------------------------
+    # STYLE-AWARE instrumentation end
+    instru_end = compute_style_aware_instru_end(
+        target_style=target_style,
+        anchor_job_name=anchor_job_name,
+        exec_job_names=exec_job_names,
+        exec_first=exec_first,
+        exec_last=exec_last,
+        step_times=step_times,
+    )
 
     if instru_end:
         out["instru_ended_at"] = instru_end.isoformat().replace("+00:00", "Z")
 
+    # FULL instrumentation-path window
     if anchor_dt and instru_end:
         out["instru_duration_seconds"] = dt_to_seconds(anchor_dt, instru_end)
 
+    # Within-window decomposition
     if anchor_dt and exec_first:
         out["pre_test_overhead_seconds"] = dt_to_seconds(anchor_dt, exec_first)
 
@@ -1413,7 +1444,6 @@ def compute_metrics_for_event_set(
         out["post_test_overhead_seconds"] = dt_to_seconds(exec_last, instru_end)
 
     return out
-
 
 # =========================
 # Stage 3 builders
@@ -1453,15 +1483,17 @@ def build_stage3_outputs_for_run(
     base_start = iso_to_dt(run_started_at) or iso_to_dt(run_created_at)
 
     if not jobs:
-        baseline = compute_metrics_for_event_set(base_start, [], stage2_instru_detect_method, s2_fallback)
+        baseline = compute_metrics_for_event_set(base_start, [], stage2_instru_detect_method, s2_fallback, target_style="")
         for k in STYLE_METRIC_KEYS:
             run_metrics[k] = baseline.get(k)
 
         declared = split_styles(styles_text) or [""]
         for s in declared:
             row = {"style": s}
+            s_style = s or ""
+            s_metrics = compute_metrics_for_event_set(base_start, [], stage2_instru_detect_method, s2_fallback, target_style=s_style)
             for k in STYLE_METRIC_KEYS:
-                v = run_metrics.get(k)
+                v = s_metrics.get(k)
                 row[k] = "" if v is None else str(v)
             per_style_rows.append(row)
 
@@ -1585,6 +1617,8 @@ def build_stage3_outputs_for_run(
         yaml_run_snip, yaml_uses_snip, yaml_with_script_snip, yaml_block_snip
     ) in tmp_steps_sorted:
 
+        inferred_style = infer_style_name(flags)
+
         if not is_multi_style:
             if not seen_first_anchor:
                 if category == "test" or is_exec_step(flags) or bool(flags.get("stage1_anchor_match")):
@@ -1624,6 +1658,9 @@ def build_stage3_outputs_for_run(
             step_style_tag = first_style
             step_style_reason = "single_style_run_override"
         else:
+            # For multi-style runs, switch segment when a step explicitly signals a style
+            if inferred_style and inferred_style in declared_styles:
+                current_style = inferred_style
             step_style_tag = current_style
             step_style_reason = "segment_inferred_from_anchor" if current_style else ""
 
@@ -1662,42 +1699,57 @@ def build_stage3_outputs_for_run(
         if step_style_tag:
             events_by_style.setdefault(step_style_tag, []).append(ev)
 
-    baseline = compute_metrics_for_event_set(base_start, all_events, stage2_instru_detect_method, s2_fallback)
+    baseline = compute_metrics_for_event_set(base_start, all_events, stage2_instru_detect_method, s2_fallback, target_style="")
     for k in STYLE_METRIC_KEYS:
         run_metrics[k] = baseline.get(k)
 
     run_metrics["third_party_job_count"] = third_party_count
     run_metrics["third_party_job_names"] = safe_join_names(third_party_job_names)
-
     run_metrics["third_party_provider_job_count"] = third_party_provider_count
     run_metrics["third_party_provider_job_names"] = safe_join_names(third_party_provider_job_names)
 
     if not is_multi_style:
         s = declared_styles[0]
         row = {"style": s}
+        s_metrics = compute_metrics_for_event_set(
+            base_start,
+            all_events,
+            stage2_instru_detect_method,
+            s2_fallback,
+            target_style=s,
+        )
         for k in STYLE_METRIC_KEYS:
-            v = run_metrics.get(k)
+            v = s_metrics.get(k)
             row[k] = "" if v is None else str(v)
         per_style_rows.append(row)
         return run_metrics, step_rows, per_style_rows
 
     for s in declared_styles:
         row = {"style": s}
-        for k in STYLE_METRIC_KEYS:
-            v = run_metrics.get(k)
-            row[k] = "" if v is None else str(v)
-
         s_events = events_by_style.get(s, [])
         if s_events:
-            s_metrics = compute_metrics_for_event_set(base_start, s_events, stage2_instru_detect_method, s2_fallback)
-            for k in STYLE_METRIC_KEYS:
-                v = s_metrics.get(k)
-                row[k] = "" if v is None else str(v)
+            s_metrics = compute_metrics_for_event_set(
+                base_start,
+                s_events,
+                stage2_instru_detect_method,
+                s2_fallback,
+                target_style=s,
+            )
+        else:
+            s_metrics = compute_metrics_for_event_set(
+                base_start,
+                [],
+                stage2_instru_detect_method,
+                s2_fallback,
+                target_style=s,
+            )
+        for k in STYLE_METRIC_KEYS:
+            v = s_metrics.get(k)
+            row[k] = "" if v is None else str(v)
 
         per_style_rows.append(row)
 
     return run_metrics, step_rows, per_style_rows
-
 
 # =========================
 # MAIN
@@ -1820,14 +1872,12 @@ def main() -> None:
         if not full_name or not run_id:
             continue
 
-        # include both direct and S2 mirrored fields so compute_metrics can fallback cleanly
         s2_fallback = {
             "S2_instru_first_started_at": r.get("S2_instru_first_started_at", ""),
             "S2_instru_last_completed_at": r.get("S2_instru_last_completed_at", ""),
             "S2_instru_window_seconds": r.get("S2_instru_window_seconds", ""),
             "S2_time_to_first_instru_seconds": r.get("S2_time_to_first_instru_seconds", ""),
 
-            # NEW modified TTFTS fallback fields
             "time_to_first_instru_from_anchor_job_seconds": r.get("time_to_first_instru_from_anchor_job_seconds", ""),
             "time_to_first_instru_from_anchor_job_quality": r.get("time_to_first_instru_from_anchor_job_quality", ""),
             "anchor_job_started_at": r.get("anchor_job_started_at", ""),
@@ -1836,7 +1886,6 @@ def main() -> None:
             "S2_time_to_first_instru_from_anchor_job_quality": r.get("S2_time_to_first_instru_from_anchor_job_quality", ""),
             "S2_anchor_job_started_at": r.get("S2_anchor_job_started_at", ""),
 
-            # Stage1 pass-through from Stage2 (if present)
             "jobs_before_anchor_count": r.get("jobs_before_anchor_count", ""),
         }
 
@@ -1905,7 +1954,7 @@ def main() -> None:
             append_row(OUT_STAGE3B_STEPS_CSV, steps_fields, sr2)
 
         for pr in per_style_rows:
-            pr2 = dict(r)  # carries all Stage2 columns too (including jobs_before_anchor_count)
+            pr2 = dict(r)
             pr2["style"] = pr.get("style", "")
             for k in STYLE_METRIC_KEYS:
                 if k in pr:
@@ -1919,7 +1968,6 @@ def main() -> None:
     print("[done] Run metrics:", OUT_STAGE3A_RUNS_CSV)
     print("[done] Step breakdown:", OUT_STAGE3B_STEPS_CSV)
     print("[done] Run x style:", OUT_STAGE3C_RUN_PER_STYLE_CSV)
-
 
 if __name__ == "__main__":
     main()

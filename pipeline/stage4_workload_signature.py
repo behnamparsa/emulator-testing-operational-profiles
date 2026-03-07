@@ -45,11 +45,6 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
-from pipeline.text_utils import first_nonempty
-from pipeline.text_utils import normalize_full_name
-from pipeline.text_utils import to_int_loose
-from pipeline.gha_utils import sanitize_gha_expr
-from pipeline.text_utils import parse_int_strict
 import xml.etree.ElementTree as ET
 
 import requests
@@ -57,10 +52,8 @@ import requests
 # =========================
 # CONFIG
 # =========================
-from config.runtime import get_root_dir, get_tokens_env_path, load_github_tokens
-
-TOKENS_ENV_PATH = get_tokens_env_path()
-ROOT_DIR = get_root_dir()
+TOKENS_ENV_PATH = Path(r"C:\GitHub\Android-Mobile-Apps\All_Tokens.env")
+ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
 
 IN_RUN_METRICS_CSV = ROOT_DIR / "run_metrics_v16_stage3_enhanced.csv"
 IN_RUN_STEPS_CSV   = ROOT_DIR / "run_steps_v16_stage3_breakdown.csv"
@@ -123,14 +116,202 @@ def write_csv(path: Path, fieldnames: List[str], rows: List[Dict[str, str]]) -> 
         for r in rows:
             w.writerow(r)
 
-def load_tokens_from_env_file(env_path: Optional[Path], max_tokens: int = 3) -> List[str]:
-    tokens = load_github_tokens(env_path=env_path, max_tokens=max_tokens)
+def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
+    if not env_path.exists():
+        raise FileNotFoundError(f"Tokens env file not found: {env_path}")
+    tokens: List[str] = []
+    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k.startswith("GITHUB_TOKEN_") and v:
+            tokens.append(v)
+            if len(tokens) >= max_tokens:
+                break
     if not tokens:
-        raise RuntimeError(
-            "No GitHub tokens found. Provide All_Tokens.env with GITHUB_TOKEN_1..7 "
-            "or set TOKENS_ENV_PATH to its location."
-        )
+        raise ValueError(f"No tokens found in {env_path}. Expected keys like GITHUB_TOKEN_1=...")
     return tokens
+
+def first_nonempty(row: Dict[str, str], keys: List[str]) -> str:
+    for k in keys:
+        v = (row.get(k) or "").strip()
+        if v:
+            return v
+    return ""
+
+def to_int_loose(x: str, default: int = 0) -> int:
+    """
+    Loose numeric parsing for counters that might come as floats/strings.
+    Returns default if empty/non-numeric.
+    """
+    s = (x or "").strip()
+    if not s or s.lower() in {"nan", "none"}:
+        return default
+    try:
+        return int(float(s))
+    except Exception:
+        return default
+
+def parse_int_strict(s: str) -> Optional[int]:
+    """
+    Return int if string is clearly numeric; reject dates/timestamps/iso strings.
+
+    Minimal formatting fix:
+    - Accept comma/underscore formatted ints: "1,234", "1_234"
+    - Accept integer-ish floats: "8.0"
+    - Accept job-count strings with one number: "8 jobs", "jobs=8", "total_jobs: 8"
+    - Still rejects datetime-like strings.
+    """
+    s = (s or "").strip()
+    if not s:
+        return None
+
+    # reject obvious ISO/datetime formats
+    if re.search(r"\d{4}-\d{2}-\d{2}", s):
+        return None
+    if re.search(r"T\d{2}:\d{2}:\d{2}", s):
+        return None
+    if re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", s):
+        return None
+
+    # normalize thousands separators
+    s2 = s.replace(",", "").replace("_", "").strip()
+
+    # accept digits only
+    if re.fullmatch(r"\d+", s2):
+        try:
+            return int(s2)
+        except Exception:
+            return None
+
+    # accept digits with decimal .0
+    if re.fullmatch(r"\d+\.0+", s2):
+        try:
+            return int(float(s2))
+        except Exception:
+            return None
+
+    # accept a single number embedded in a job-count-looking string
+    low = s2.lower()
+    if any(k in low for k in ["job", "jobs", "total_jobs", "jobs_total", "job_count", "jobs_count"]):
+        nums = re.findall(r"\d+", s2)
+        if len(nums) == 1:
+            try:
+                return int(nums[0])
+            except Exception:
+                return None
+
+    return None
+
+def sanitize_gha_expr(text: str) -> str:
+    if not text:
+        return ""
+    return GHA_EXPR_RE.sub("MATRIX", text)
+
+# --- ONLY ADDITION (no other changes): stable job identity to avoid job_name collisions in fallback counting ---
+def _job_identity_from_step_row(s: Dict[str, str]) -> str:
+    """
+    Prefer stable identifiers to avoid collapsing matrix jobs that share job_name.
+    Falls back to the same fields you already have, but in a safer priority order.
+    """
+    job_id = (s.get("job_id") or "").strip()
+    if job_id:
+        return f"id:{job_id}"
+
+    job_url = (s.get("job_url") or s.get("job_html_url") or s.get("html_url") or s.get("url") or "").strip()
+    if job_url:
+        return f"url:{job_url}"
+
+    job_ordinal = (s.get("job_ordinal_in_run") or s.get("job_ordinal") or s.get("job_index") or s.get("job_number") or s.get("job_position") or "").strip()
+    if job_ordinal:
+        return f"ord:{job_ordinal}"
+
+    job_name = (s.get("job_name") or "").strip()
+    if job_name:
+        attempt = (s.get("job_attempt") or s.get("attempt") or "").strip()
+        matrix = (s.get("matrix") or s.get("strategy_matrix") or s.get("matrix_id") or s.get("job_matrix_id") or "").strip()
+        return f"name:{job_name}|attempt:{attempt}|matrix:{matrix}"
+
+    return ""
+
+# -------------------------
+# full_name normalization
+# -------------------------
+FULL_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+def normalize_full_name(v: str) -> str:
+    v = (v or "").strip().replace(BOM, "")
+    if not v:
+        return ""
+    # If URL, extract owner/repo
+    m = re.search(r"github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)", v)
+    if m:
+        return f"{m.group(1)}/{m.group(2)}"
+    # If already owner/repo
+    if FULL_NAME_RE.match(v):
+        return v
+    # If "owner repo" or "owner:repo"
+    v2 = v.replace(":", "/").replace("\\", "/").strip()
+    if FULL_NAME_RE.match(v2):
+        return v2
+    # Last resort: try splitting
+    parts = [p for p in re.split(r"[\s/]+", v2) if p]
+    if len(parts) >= 2:
+        cand = f"{parts[-2]}/{parts[-1]}"
+        if FULL_NAME_RE.match(cand):
+            return cand
+    return ""
+
+# -------------------------
+# Bucketing
+# -------------------------
+def bucket_runner_os(os_raw: str) -> str:
+    s = safe_lower(os_raw)
+    if "ubuntu" in s or "linux" in s:
+        return "ubuntu"
+    if "macos" in s or "osx" in s or (s.startswith("mac") and "machine" not in s):
+        return "macos"
+    if "windows" in s or s.startswith("win"):
+        return "windows"
+    if not s:
+        return "unknown"
+    return "mixed_or_unknown"
+
+def bucket_job_count(n: Optional[int]) -> str:
+    if n is None:
+        return "unknown"
+    if n <= 1:
+        return "1"
+    if 2 <= n <= 3:
+        return "2_3"
+    if 4 <= n <= 6:
+        return "4_6"
+    return ">6"
+
+def bucket_step_count(n: Optional[int]) -> str:
+    if n is None:
+        return "unknown"
+    if n <= 20:
+        return "<=20"
+    if 21 <= n <= 40:
+        return "21_40"
+    if 41 <= n <= 80:
+        return "41_80"
+    return ">80"
+
+def bucket_suite_size(n: Optional[int]) -> str:
+    if n is None or n <= 0:
+        return "unknown"
+    if n <= 100:
+        return "1_100"
+    if n <= 500:
+        return "101_500"
+    if n <= 2000:
+        return "501_2000"
+    return ">2000"
 
 # =========================
 # GitHub API client
@@ -474,84 +655,6 @@ def extract_junit_cases_from_artifacts(gh: GitHubClient, full_name: str, run_id:
         return total_cases, "artifacts"
     return None, "none"
 
-
-def _job_identity_from_step_row(row: dict) -> str:
-    """
-    Stable job identity derived from a step-telemetry row.
-
-    Priority (most stable to least):
-      1) job_id
-      2) job_url
-      3) run_id + job_name + job_attempt
-      4) job_name
-      5) fallback: empty string
-    """
-    def _get(*keys):
-        for k in keys:
-            v = row.get(k)
-            if v is None:
-                continue
-            s = str(v).strip()
-            if s:
-                return s
-        return ""
-
-    job_id = _get("job_id", "workflow_job_id")
-    if job_id:
-        return f"job_id:{job_id}"
-
-    job_url = _get("job_url", "html_url", "job_html_url")
-    if job_url:
-        return f"job_url:{job_url}"
-
-    run_id = _get("run_id", "workflow_run_id")
-    job_name = _get("job_name", "name")
-    job_attempt = _get("job_attempt", "attempt")
-
-    if run_id and job_name:
-        if job_attempt:
-            return f"run:{run_id}|job:{job_name}|attempt:{job_attempt}"
-        return f"run:{run_id}|job:{job_name}"
-
-    if job_name:
-        return f"job:{job_name}"
-
-    return ""
-
-from typing import Optional
-
-def bucket_job_count(n: Optional[int]) -> str:
-    if n is None:
-        return "unknown"
-    if n <= 1:
-        return "1"
-    if 2 <= n <= 3:
-        return "2_3"
-    if 4 <= n <= 6:
-        return "4_6"
-    return ">6"
-
-def bucket_step_count(n: Optional[int]) -> str:
-    if n is None:
-        return "unknown"
-    if n <= 20:
-        return "<=20"
-    if 21 <= n <= 40:
-        return "21_40"
-    if 41 <= n <= 80:
-        return "41_80"
-    return ">80"
-
-def bucket_suite_size(n: Optional[int]) -> str:
-    if n is None or n <= 0:
-        return "unknown"
-    if n <= 100:
-        return "1_100"
-    if n <= 500:
-        return "101_500"
-    if n <= 2000:
-        return "501_2000"
-    return ">2000"
 # =========================
 # MAIN
 # =========================
