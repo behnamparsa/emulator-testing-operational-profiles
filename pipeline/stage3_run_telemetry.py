@@ -1277,7 +1277,16 @@ def compute_metrics_for_event_set(
 
         if fallback:
             fallback.sort(key=lambda x: x[0])
-            anchor_dt, _anchor_name, anchor_job_name, _f_source, _f_flags = fallback[0]
+            t = fallback[0]
+            # support both legacy (4) and newer (5) tuple formats
+            if len(t) == 5:
+                anchor_dt, _anchor_name, anchor_job_name, _f_source, _f_flags = t
+            elif len(t) == 4:
+                anchor_dt, _anchor_name, anchor_job_name, _f_source = t
+                _f_flags = ""
+            else:
+                # unexpected shape; treat as missing fallback
+                anchor_dt, _anchor_name, anchor_job_name, _f_source, _f_flags = None, "", "", "missing", ""
             anchor_source = "fallback_instru_evidence"
 
     # legacy ttfts (run_started -> anchor step)
