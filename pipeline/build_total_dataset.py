@@ -37,6 +37,7 @@ MainDataset is explicitly filtered to Stage 3 executed instrumentation runs only
 from __future__ import annotations
 
 from pathlib import Path
+from config.runtime import get_root_dir
 from typing import List, Optional, Set
 
 import numpy as np
@@ -45,7 +46,7 @@ import pandas as pd
 # =========================
 # CONFIG
 # =========================
-ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
+ROOT_DIR = get_root_dir()
 
 IN_STAGE3A = ROOT_DIR / "run_per_style_v1_stage3.csv"
 IN_STAGE4 = ROOT_DIR / "run_workload_signature_v3.csv"

@@ -38,6 +38,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
 
 import requests
+from config.runtime import get_root_dir, get_tokens_env_path, load_github_tokens
 
 try:
     import yaml  # PyYAML (not required)
@@ -47,8 +48,8 @@ except Exception:
 # =========================
 # CONFIG (KEEP THESE AS YOUR STAGE-1 CONTRACT)
 # =========================
-TOKENS_ENV_PATH = Path(r"C:\GitHub\Android-Mobile-Apps\All_Tokens.env")
-ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
+TOKENS_ENV_PATH = get_tokens_env_path()
+ROOT_DIR = get_root_dir()
 
 IN_URL_LIST_CSV = ROOT_DIR / "URL_List.csv"               # input list of repos
 OUT_STAGE1_CSV  = ROOT_DIR / "verified_workflows_v16.csv" # Stage-1 output name (original)

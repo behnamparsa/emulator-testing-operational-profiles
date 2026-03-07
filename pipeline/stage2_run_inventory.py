@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Union, Tuple
 
 import requests
+from config.runtime import get_root_dir, get_tokens_env_path, load_github_tokens
 
 try:
     from tqdm import tqdm
@@ -48,9 +49,9 @@ except ImportError:
 # =========================
 # CONFIG
 # =========================
-TOKENS_ENV_PATH = Path(r"C:\GitHub\Android-Mobile-Apps\All_Tokens.env")
+TOKENS_ENV_PATH = get_tokens_env_path()
 
-ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
+ROOT_DIR = get_root_dir()
 
 IN_VERIFIED_WORKFLOWS_CSV = ROOT_DIR / "verified_workflows_v16.csv"
 OUT_RUN_INVENTORY_CSV = ROOT_DIR / "run_inventory.csv"

@@ -48,12 +48,13 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 import xml.etree.ElementTree as ET
 
 import requests
+from config.runtime import get_root_dir, get_tokens_env_path, load_github_tokens
 
 # =========================
 # CONFIG
 # =========================
-TOKENS_ENV_PATH = Path(r"C:\GitHub\Android-Mobile-Apps\All_Tokens.env")
-ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
+TOKENS_ENV_PATH = get_tokens_env_path()
+ROOT_DIR = get_root_dir()
 
 IN_RUN_METRICS_CSV = ROOT_DIR / "run_metrics_v16_stage3_enhanced.csv"
 IN_RUN_STEPS_CSV   = ROOT_DIR / "run_steps_v16_stage3_breakdown.csv"
