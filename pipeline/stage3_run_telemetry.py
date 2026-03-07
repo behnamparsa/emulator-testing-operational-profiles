@@ -102,23 +102,13 @@ def safe_join_names(names: List[str], max_len: int = 800) -> str:
     return s[: max_len - 3] + "..."
 
 def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
-    if not env_path.exists():
-        raise FileNotFoundError(f"Tokens env file not found: {env_path}")
-    tokens: List[str] = []
-    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        k = k.strip()
-        v = v.strip().strip('"').strip("'")
-        if k.startswith("GITHUB_TOKEN_") and v:
-            tokens.append(v)
-            if len(tokens) >= max_tokens:
-                break
-    if not tokens:
-        raise ValueError(f"No tokens found in {env_path}. Expected keys like GITHUB_TOKEN_1=...")
-    return tokens
+    """CI-safe token loader.
+    - In GitHub Actions, reads GH_PAT/GITHUB_TOKEN from environment.
+    - Locally, will also read from env_path if it exists.
+    """
+    # config.runtime.load_github_tokens already checks env vars first and
+    # falls back to reading env_path only if it exists.
+    return load_github_tokens(env_path=env_path, max_tokens=max_tokens)
 
 def _clean_key(k: str) -> str:
     return (k or "").replace(BOM, "").strip()
