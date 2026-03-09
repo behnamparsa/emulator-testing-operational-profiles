@@ -1,0 +1,101 @@
+name: Pipeline Shard
+
+on:
+  workflow_call:
+    inputs:
+      shard_file:
+        required: true
+        type: string
+      shard_id:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  run-shard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download shard definitions
+        uses: actions/download-artifact@v4
+        with:
+          name: shard-definitions
+          path: shard-definitions
+
+      - name: Prepare shard workdir
+        run: |
+          mkdir -p workdir
+          cp "shard-definitions/${{ inputs.shard_file }}" workdir/URL_List.csv
+          echo "Shard: ${{ inputs.shard_id }}"
+          wc -l workdir/URL_List.csv || true
+
+      - name: Run Stage 1
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ROOT_DIR: ${{ github.workspace }}/workdir
+        run: |
+          python -m pipeline.stage1_verified_workflows
+
+      - name: Run Stage 2
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ROOT_DIR: ${{ github.workspace }}/workdir
+        run: |
+          python -m pipeline.stage2_run_inventory
+
+      - name: Run Stage 3
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ROOT_DIR: ${{ github.workspace }}/workdir
+        run: |
+          python -m pipeline.stage3_run_telemetry
+
+      - name: Run Stage 4
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ROOT_DIR: ${{ github.workspace }}/workdir
+        run: |
+          python -m pipeline.stage4_workload_signature
+
+      - name: Save shard manifest
+        run: |
+          cat > workdir/manifest.json <<EOF
+          {
+            "shard_id": "${{ inputs.shard_id }}",
+            "shard_file": "${{ inputs.shard_file }}",
+            "status": "completed"
+          }
+          EOF
+
+      - name: Upload shard outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ inputs.shard_id }}
+          path: |
+            workdir/verified_workflows_v16.csv
+            workdir/run_inventory.csv
+            workdir/run_metrics_v16_stage3_enhanced.csv
+            workdir/run_steps_v16_stage3_breakdown.csv
+            workdir/run_per_style_v1_stage3.csv
+            workdir/run_workload_signature_v3.csv
+            workdir/manifest.json
