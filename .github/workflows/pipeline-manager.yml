@@ -1,0 +1,96 @@
+name: Pipeline Manager
+
+on:
+  workflow_dispatch:
+    inputs:
+      chunk_size:
+        description: "URLs per shard"
+        required: false
+        default: "10"
+      max_parallel:
+        description: "Max shard pipelines in parallel"
+        required: false
+        default: "3"
+      url_list_path:
+        description: "Path to master URL list"
+        required: false
+        default: "URL_List.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare-shards:
+    runs-on: ubuntu-latest
+    outputs:
+      shard_matrix: ${{ steps.make-shards.outputs.shard_matrix }}
+      shard_count: ${{ steps.make-shards.outputs.shard_count }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build shard matrix
+        id: make-shards
+        run: |
+          python scripts/split_url_list.py \
+            --input "${{ github.event.inputs.url_list_path || 'URL_List.txt' }}" \
+            --chunk-size "${{ github.event.inputs.chunk_size || '10' }}" \
+            --out-dir shards
+
+          python - <<'PY'
+          import json, os
+          shard_dir = "shards"
+          shard_files = sorted([
+              f for f in os.listdir(shard_dir)
+              if f.endswith(".txt")
+          ])
+          matrix = [{"shard_file": f, "shard_id": f.replace(".txt", "")} for f in shard_files]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"shard_matrix={json.dumps(matrix)}\n")
+              out.write(f"shard_count={len(matrix)}\n")
+          PY
+
+      - name: Upload shard definitions
+        uses: actions/upload-artifact@v4
+        with:
+          name: shard-definitions
+          path: shards/
+
+  run-shards:
+    needs: prepare-shards
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(github.event.inputs.max_parallel || '3') }}
+      matrix:
+        include: ${{ fromJSON(needs.prepare-shards.outputs.shard_matrix) }}
+    uses: ./.github/workflows/pipeline-shard.yml
+    with:
+      shard_file: ${{ matrix.shard_file }}
+      shard_id: ${{ matrix.shard_id }}
+    secrets: inherit
+
+  aggregate:
+    needs: run-shards
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded_artifacts
+
+      - name: Aggregate outputs
+        run: |
+          python scripts/aggregate_results.py \
+            --input-dir downloaded_artifacts \
+            --output-dir final_outputs
+
+      - name: Upload aggregated outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-aggregated-results
+          path: final_outputs/

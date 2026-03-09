@@ -1,0 +1,77 @@
+name: Pipeline Shard
+
+on:
+  workflow_call:
+    inputs:
+      shard_file:
+        required: true
+        type: string
+      shard_id:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  run-shard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download shard definitions
+        uses: actions/download-artifact@v4
+        with:
+          name: shard-definitions
+          path: shards
+
+      - name: Show shard info
+        run: |
+          echo "Shard ID: ${{ inputs.shard_id }}"
+          echo "Shard file: shards/${{ inputs.shard_file }}"
+          wc -l "shards/${{ inputs.shard_file }}" || true
+          cat "shards/${{ inputs.shard_file }}"
+
+      - name: Run Stage 1
+        run: |
+          python stage1.py \
+            --url-list "shards/${{ inputs.shard_file }}" \
+            --output-dir "outputs/${{ inputs.shard_id }}/stage1"
+
+      - name: Run Stage 2
+        run: |
+          python stage2.py \
+            --input-dir "outputs/${{ inputs.shard_id }}/stage1" \
+            --output-dir "outputs/${{ inputs.shard_id }}/stage2"
+
+      - name: Run Stage 3
+        run: |
+          python stage3.py \
+            --input-dir "outputs/${{ inputs.shard_id }}/stage2" \
+            --output-dir "outputs/${{ inputs.shard_id }}/stage3"
+
+      - name: Run Stage 4
+        run: |
+          python stage4.py \
+            --input-dir "outputs/${{ inputs.shard_id }}/stage3" \
+            --output-dir "outputs/${{ inputs.shard_id }}/stage4"
+
+      - name: Save shard manifest
+        run: |
+          mkdir -p "outputs/${{ inputs.shard_id }}"
+          cat > "outputs/${{ inputs.shard_id }}/manifest.json" <<EOF
+          {
+            "shard_id": "${{ inputs.shard_id }}",
+            "shard_file": "${{ inputs.shard_file }}",
+            "status": "completed"
+          }
+          EOF
+
+      - name: Upload shard outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ inputs.shard_id }}
+          path: outputs/${{ inputs.shard_id }}/
