@@ -4,3 +4,5 @@ __pycache__/
 .github_tokens.env
 *.pyc
 *.pyo
+.venv/
+.pytest_cache/
