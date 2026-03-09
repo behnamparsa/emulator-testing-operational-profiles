@@ -1,20 +1,36 @@
 # ============================================================
-# Stage 3 (ADJUSTED FOR STYLE-SPECIFIC WINDOW ENDING)
+# Stage 3 (FULLY ADJUSTED: canonical style names + stronger 3P alignment
+#            + Stage1-confirmed called-file recovery only)
 #
-# Key updates in this version
+# Main adjustments in this version
 # 1) Preserves existing output file names / locations
 # 2) Preserves TTFTS logic and provenance behavior
 # 3) Preserves run-level output and run×style output
 # 4) Keeps:
 #      - instru_duration_seconds = FULL instrumentation-path window
 #      - core_instru_window_seconds / instru_exec_window_seconds = CORE execution span only
-# 5) Adds style-aware instrumentation end selection:
-#      - default (Community / Custom / GMD / Real-Device):
-#          constrain instrumentation end to anchor job, else exec-step jobs
-#      - Third-Party:
-#          allow controlled multi-job extension across instrumentation-related
-#          provider/result jobs after execution, instead of strict same-job limit
-# 6) Applies style-aware logic cleanly for single-style and multi-style runs
+# 5) Uses canonical style names everywhere:
+#      - Community
+#      - Custom
+#      - GMD
+#      - Third-Party
+#      - Real-Devices
+# 6) Fixes multi-style segmentation by normalizing inferred style names
+#    before comparing against declared styles
+# 7) Strengthens Third-Party detection to align better with Stage 1
+# 8) Keeps style-aware instrumentation end selection
+# 9) IMPORTANT CHANGE:
+#      - Stage 3 no longer blindly re-follows local files for every candidate step
+#      - It now uses Stage 1 / Stage 2 pass-through fields:
+#           called_instru_signal
+#           called_instru_file_paths
+#           called_instru_origin_refs
+#           called_instru_origin_step_names
+#           called_instru_file_types
+#      - Called-file recovery is attempted ONLY when Stage 1 already confirmed
+#        instrumentation evidence in followed files
+# 10) Keeps Option B only for Custom-capable workflows:
+#      - guarded Stage-1-supported fallback to rescue Custom wrapper anchor/execution detection
 # ============================================================
 
 import base64
@@ -59,6 +75,9 @@ MAX_PAGES_PER_LIST = 2000
 
 FETCH_WORKFLOW_YAML = True
 WORKFLOW_YAML_CACHE_MAX = 7000
+
+# targeted Stage1-confirmed followed-file fetch only
+MAX_FOLLOW_BYTES_STAGE3 = 1_500_000
 
 # =========================
 # Helpers
@@ -106,8 +125,6 @@ def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
     - In GitHub Actions, reads GH_PAT/GITHUB_TOKEN from environment.
     - Locally, will also read from env_path if it exists.
     """
-    # config.runtime.load_github_tokens already checks env vars first and
-    # falls back to reading env_path only if it exists.
     return load_github_tokens(env_path=env_path, max_tokens=max_tokens)
 
 def _clean_key(k: str) -> str:
@@ -151,7 +168,8 @@ def append_row(path: Path, fieldnames: List[str], row: Dict[str, str]) -> None:
         w.writerow(row)
 
 def split_styles(styles_text: str) -> List[str]:
-    return [s.strip() for s in (styles_text or "").split(",") if s.strip()]
+    raw = [s.strip() for s in (styles_text or "").split(",") if s.strip()]
+    return unique_preserve([normalize_style_label(s) for s in raw if normalize_style_label(s)])
 
 def sanitize_gha_expr(text: str) -> str:
     return GHA_EXPR_RE.sub("", text or "")
@@ -166,6 +184,29 @@ def safe_int_from_str(v: str) -> Optional[int]:
         return int(float(s))
     except Exception:
         return None
+
+def normalize_style_label(style: str) -> str:
+    s = (style or "").strip().lower()
+    s = s.replace("_", "-")
+    s = re.sub(r"\s+", " ", s)
+
+    if s in {"community", "emu-community", "emulator-community", "emu community", "emulator community"}:
+        return "Community"
+    if s in {"custom", "emu-custom", "emulator-custom", "emu custom", "emulator custom"}:
+        return "Custom"
+    if s in {"gmd"}:
+        return "GMD"
+    if s in {"third-party", "third party", "3p", "thirdparty"}:
+        return "Third-Party"
+    if s in {"real-device", "real device", "real-devices", "real devices"}:
+        return "Real-Devices"
+    return style.strip()
+
+def parse_csv_list_field(raw: str) -> List[str]:
+    if not raw:
+        return []
+    parts = [p.strip() for p in str(raw).split(",") if p and str(p).strip()]
+    return unique_preserve(parts)
 
 # =========================
 # Normalization + matching
@@ -264,6 +305,131 @@ def best_yaml_step_match_with_reason(step_name: str, yaml_steps: Dict[str, Dict[
     return None, "no_match"
 
 # =========================
+# Called-file helpers (targeted Stage1-confirmed only)
+# =========================
+LOCAL_USES_RE = re.compile(r'(?mi)^\s*uses\s*:\s*(?P<ref>\./\S+?)(?:\s+#.*)?$')
+WORKDIR_RE = re.compile(r'(?mi)^\s*working-directory\s*:\s*(?P<wd>[^\n#]+)')
+
+SCRIPT_CALL_RE = re.compile(r'''(?mix)
+(?:^|[;&|()\s"'`])
+(?:(?:bash|sh|pwsh|powershell|python|python3|node|ruby)\s+)?
+(?P<path>(?:\./|\.\\)?[\w./\\-]+\.(?:sh|ps1|bat|cmd|py|js|rb|pl|ya?ml))
+(?:\s|$)
+''')
+
+GENERIC_REL_EXEC_RE = re.compile(r'(?m)(?:^|[;&|()\s"\'`])(?P<path>\./[A-Za-z0-9_./\\-]+)(?:\s|$)')
+CONFIG_ARG_RE = re.compile(r'(?mi)\b--config(?:=|\s+)(?P<path>[^\s"\']+)')
+NO_FOLLOW_BASENAMES = {"gradlew", "gradlew.bat", "gradle", "adb", "flutter"}
+
+def _strip_quotes(s: str) -> str:
+    return (s or "").strip().strip('"').strip("'").strip("`")
+
+def is_dynamic_ref(ref: str) -> bool:
+    r = ref or ""
+    return ("${{" in r) or ("${" in r) or ("$(" in r) or ("%{" in r)
+
+def extract_workdirs(text: str) -> List[str]:
+    wds = []
+    for m in WORKDIR_RE.finditer(text or ""):
+        wd = _strip_quotes(m.group("wd"))
+        if wd:
+            wd = wd.replace("\\", "/").lstrip("./")
+            wds.append(wd)
+    return unique_preserve(wds)
+
+def extract_references(text: str) -> List[str]:
+    refs: List[str] = []
+
+    for m in LOCAL_USES_RE.finditer(text or ""):
+        ref = _strip_quotes(m.group("ref"))
+        if "@" in ref:
+            ref = ref.split("@", 1)[0]
+        refs.append(ref)
+
+    for m in SCRIPT_CALL_RE.finditer(text or ""):
+        refs.append(_strip_quotes(m.group("path")))
+
+    for m in CONFIG_ARG_RE.finditer(text or ""):
+        refs.append(_strip_quotes(m.group("path")))
+
+    for m in GENERIC_REL_EXEC_RE.finditer(text or ""):
+        p = _strip_quotes(m.group("path"))
+        base = Path(p.replace("\\", "/")).name.lower()
+        if base in NO_FOLLOW_BASENAMES:
+            continue
+        refs.append(p)
+
+    out = []
+    for r in refs:
+        if not r:
+            continue
+        out.append(r.replace("\\", "/").strip())
+    return unique_preserve(out)
+
+def normalize_repo_rel_path(p: str) -> str:
+    x = _strip_quotes((p or "").replace("\\", "/").strip())
+    if x.startswith("./"):
+        x = x[2:]
+    return x.lstrip("/")
+
+def step_matches_origin_step_names(step_name: str, origin_step_names: List[str]) -> bool:
+    if not step_name or not origin_step_names:
+        return False
+    sk = normalize_step_key(step_name)
+    for n in origin_step_names:
+        nk = normalize_step_key(n)
+        if not nk:
+            continue
+        if sk == nk or nk in sk or sk in nk:
+            return True
+    return False
+
+def step_matches_origin_refs(step_text: str, origin_refs: List[str]) -> bool:
+    if not step_text or not origin_refs:
+        return False
+    step_refs = [normalize_repo_rel_path(x) for x in extract_references(step_text)]
+    if not step_refs:
+        return False
+    origin_norm = {normalize_repo_rel_path(x) for x in origin_refs if normalize_repo_rel_path(x)}
+    return any(r in origin_norm for r in step_refs)
+
+def should_use_stage1_confirmed_called_file_evidence(
+    step_name: str,
+    y: Optional[Dict[str, str]],
+    styles_text: str,
+    called_instru_signal: bool,
+    called_instru_origin_step_names: List[str],
+    called_instru_origin_refs: List[str],
+) -> bool:
+    if not called_instru_signal:
+        return False
+
+    y = y or {}
+    step_text = "\n".join([
+        step_name or "",
+        y.get("run", "") or "",
+        y.get("uses", "") or "",
+        y.get("with_script", "") or "",
+        y.get("blob", "") or "",
+    ])
+    step_text = sanitize_gha_expr(step_text)
+    styles_l = (styles_text or "").lower()
+
+    if step_matches_origin_step_names(step_name, called_instru_origin_step_names):
+        return True
+    if step_matches_origin_refs(step_text, called_instru_origin_refs):
+        return True
+
+    # guarded extra allowance for Custom wrapper-like steps only
+    if "custom" in styles_l:
+        if CUSTOM_WRAPPER_STEP_RE.search(step_name or ""):
+            return True
+        if "./" in step_text or ".\\" in step_text:
+            return True
+
+    return False
+
+# =========================
 # GitHub API client
 # =========================
 @dataclass
@@ -278,7 +444,7 @@ class GitHubClient:
         self.session.headers.update({
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "stage3-v16-style-aware/1.0",
+            "User-Agent": "stage3-v16-style-aware/4.0",
         })
         self.tokens = [TokenState(t) for t in tokens]
 
@@ -402,25 +568,58 @@ def list_run_jobs(gh: GitHubClient, full_name: str, run_id: int) -> List[Dict]:
     url = f"https://api.github.com/repos/{full_name}/actions/runs/{run_id}/jobs"
     return list(gh.paginate(url, params={}, item_key="jobs"))
 
-def fetch_workflow_yaml(gh: GitHubClient, full_name: str, workflow_path: str, ref: str) -> str:
-    url = f"https://api.github.com/repos/{full_name}/contents/{workflow_path.lstrip('/')}"
+def fetch_repo_text(gh: GitHubClient, full_name: str, repo_path: str, ref: str) -> str:
+    path = (repo_path or "").strip().lstrip("/")
+    if not path:
+        return ""
+    url = f"https://api.github.com/repos/{full_name}/contents/{path}"
     data = gh.request_json("GET", url, params={"ref": ref})
     if not data or not isinstance(data, dict):
         return ""
+    if data.get("type") == "dir":
+        return ""
     if data.get("encoding") == "base64" and data.get("content"):
         try:
-            return base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
+            raw = base64.b64decode(data["content"])
+            if len(raw) > MAX_FOLLOW_BYTES_STAGE3:
+                return ""
+            return raw.decode("utf-8", errors="ignore")
         except Exception:
             return ""
     dl = data.get("download_url")
     if dl:
         try:
             r = gh.session.get(dl, timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S))
-            if r.status_code == 200:
+            if r.status_code == 200 and len(r.content or b"") <= MAX_FOLLOW_BYTES_STAGE3:
                 return r.text or ""
         except requests.exceptions.RequestException:
             return ""
     return ""
+
+def fetch_workflow_yaml(gh: GitHubClient, full_name: str, workflow_path: str, ref: str) -> str:
+    return fetch_repo_text(gh, full_name, workflow_path, ref)
+
+def fetch_stage1_confirmed_called_file_text(
+    gh: GitHubClient,
+    full_name: str,
+    head_sha: str,
+    called_instru_file_paths: List[str],
+    file_text_cache: Dict[Tuple[str, str, str], str],
+) -> str:
+    chunks: List[str] = []
+    for p in called_instru_file_paths:
+        rp = normalize_repo_rel_path(p)
+        if not rp:
+            continue
+        ck = (full_name, rp, head_sha)
+        if ck in file_text_cache:
+            txt = file_text_cache[ck]
+        else:
+            txt = fetch_repo_text(gh, full_name, rp, head_sha)
+            file_text_cache[ck] = txt
+        if txt:
+            chunks.append(txt)
+    return "\n".join(chunks)
 
 # =========================
 # YAML step extraction
@@ -620,19 +819,43 @@ THIRD_PARTY_PROVIDER_RE = re.compile(
     r"hub\.browserstack\.com|browserstack|bstack|"
     r"sauce(labs)?|saucectl|"
     r"\bappcenter\b|microsoft/appcenter|"
-    r"emulator\.wtf|"
-    r"maestro\s+cloud"
+    r"emulator\.wtf|emulator-wtf/run-tests|"
+    r"maestro\s+cloud|"
+    r"firebase\s+test\s+android\s+run|gcloud\s+firebase\s+test\s+android\s+run|flank\s+android\s+run"
+    r")\b"
+)
+
+THIRD_PARTY_CONFIG_HINT_RE = re.compile(
+    r"(?ism)\b("
+    r"\.ewtf\.ya?ml|"
+    r"flank(?:\.android)?\.ya?ml|"
+    r"browserstack\.ya?ml|"
+    r"bs(?:config)?\.ya?ml|"
+    r"--config(?:=|\s+)\S+"
+    r")\b"
+)
+
+THIRD_PARTY_PROVIDER_ACTION_RE = re.compile(
+    r"(?ism)\b("
+    r"browserstack/github-actions|"
+    r"saucelabs/sauce-connect-action|"
+    r"microsoft/appcenter|"
+    r"emulator-wtf/run-tests|"
+    r"google-github-actions/(auth|setup-gcloud)"
     r")\b"
 )
 
 THIRD_PARTY_INSTRU_INVOKE_RE = re.compile(
     r"(?ism)\b("
-    r"(gcloud\s+firebase\s+test\s+android\s+run\b[\s\S]*?--type\s+instrumentation)|"
-    r"(firebase\s+test\s+android\s+run\b[\s\S]*?--type\s+instrumentation)|"
+    r"(gcloud\s+(?:beta\s+)?firebase\s+test\s+android\s+run\b[\s\S]*?(--type\s+instrumentation|--test\b))|"
+    r"(firebase\s+test\s+android\s+run\b[\s\S]*?(--type\s+instrumentation|--test\b))|"
     r"(flank\s+android\s+run\b)|"
-    r"(appcenter\s+test\s+run\s+espresso\b)|"
-    r"(appcenter\s+test\s+run\s+android\b[\s\S]*?\bespresso\b)|"
-    r"(appcenter\s+test\s+run\s+android\b[\s\S]*?\binstrumentation\b)"
+    r"(appcenter\s+test\s+run\s+android\b[\s\S]*?(espresso|instrumentation))|"
+    r"(saucectl(?:\s+run)?\b)|"
+    r"((?:browserstack|bstack)\b)|"
+    r"(maestro\s+cloud\b)|"
+    r"(emulator\.wtf\b)|"
+    r"(emulator-wtf/run-tests\b)"
     r")\b"
 )
 
@@ -659,12 +882,24 @@ DETOX_INVOKE_RE = re.compile(
 )
 
 EMU_COMMUNITY_ACTION_RE = re.compile(
-    r"(reactivecircus/android-emulator-runner|android-emulator-runner|malinskiy/action-android)",
+    r"(reactivecircus/android-emulator-runner|android-emulator-runner|malinskiy/action-android|vgaidarji/android-github-actions-emulator|hannesa2/action-android)",
     re.IGNORECASE,
 )
 
 EMU_CUSTOM_SCRIPT_RE = re.compile(
-    r"(?ism)\b(avdmanager|sdkmanager|emulator\b|start[-_ ]emulator|adb\s+wait[- ]?for[- ]?device)\b"
+    r"(?ism)\b(avdmanager|sdkmanager|emulator\b|start[-_ ]emulator|android-wait-for-emulator|adb\s+wait[- ]?for[- ]?device)\b"
+)
+
+CUSTOM_WRAPPER_STEP_RE = re.compile(
+    r"(?ism)\b("
+    r"run\s+avd\s+test|"
+    r"android\s+emulator|"
+    r"setup\s+android\s+emulator|"
+    r"flutter\s+integration\s+test|"
+    r"run\s+flutter\s+integration|"
+    r"emulator\s+test|"
+    r"avd\s+test"
+    r")\b"
 )
 
 REAL_DEVICE_ADB_RE = re.compile(r"(?mi)\badb\s+-s\s+(?!emulator-\d+\b)(?!localhost:\d+\b)(?!127\.0\.0\.1:\d+\b)\S+\b")
@@ -674,7 +909,9 @@ ENV_ANY_RE = re.compile(
     r"start[-_ ]emulator|android-wait-for-emulator|adb\s+wait[- ]?for[- ]?device|kvm|"
     r"android-actions/setup-android|"
     r"browserstack/github-actions|saucelabs/sauce-connect-action|microsoft/appcenter|"
-    r"google-github-actions/(auth|setup-gcloud)"
+    r"google-github-actions/(auth|setup-gcloud)|emulator-wtf/run-tests|"
+    r"gcloud\s+firebase\s+test\s+android\s+run|firebase\s+test\s+android\s+run|flank\s+android\s+run|"
+    r"saucectl|browserstack|bstack|emulator\.wtf|maestro\s+cloud"
     r")",
     re.IGNORECASE,
 )
@@ -717,16 +954,17 @@ INSTRU_TASK_NAME_HINT_RE = re.compile(
     r"androidtest|connectedcheck|devicecheck|alldevicescheck|"
     r"manageddevice|instrumentation|am\s+instrument|"
     r"firebase\s+test|flank|"
-    r"detox|flutter.*(integration|drive)|integration_test"
+    r"detox|flutter.*(integration|drive)|integration_test|"
+    r"browserstack|bstack|sauce|saucectl|appcenter|emulator\.wtf|maestro\s+cloud"
     r")\b"
 )
 
-# Additional job-level extension signals for Third-Party continuation
 THIRD_PARTY_CONTINUATION_RE = re.compile(
     r"(?ism)\b("
-    r"browserstack|bstack|sauce|saucectl|appcenter|firebase\s+test|flank|"
-    r"download.*artifact|fetch.*result|collect.*result|test\s+result|"
-    r"report|junit|xml|poll|wait|status|complete|finali[sz]e"
+    r"browserstack|bstack|sauce|saucectl|appcenter|firebase\s+test|flank|emulator\.wtf|maestro\s+cloud|"
+    r"download.*artifact|fetch.*result|collect.*result|collect.*report|"
+    r"test\s+result|junit|xml|poll|wait|status|complete|finali[sz]e|"
+    r"report|summary|upload.*report|provider|device\s+cloud"
     r")\b"
 )
 
@@ -743,6 +981,7 @@ def _runtime_evidence_from_text(text: str) -> Dict[str, bool]:
         "emu_custom": bool(EMU_CUSTOM_SCRIPT_RE.search(low)),
         "real_device": bool(REAL_DEVICE_ADB_RE.search(low)),
         "third_party_invoke": bool(THIRD_PARTY_INSTRU_INVOKE_RE.search(low)),
+        "third_party_provider": bool(THIRD_PARTY_PROVIDER_RE.search(low)),
     }
 
 def _flutter_androidish_from_text(text: str, runtime_ev: Dict[str, bool]) -> bool:
@@ -765,7 +1004,13 @@ def _flutter_androidish_from_text(text: str, runtime_ev: Dict[str, bool]) -> boo
     if targeted:
         return True
 
-    if runtime_ev.get("emu_comm") or runtime_ev.get("emu_custom") or runtime_ev.get("real_device") or runtime_ev.get("third_party_invoke"):
+    if (
+        runtime_ev.get("emu_comm")
+        or runtime_ev.get("emu_custom")
+        or runtime_ev.get("real_device")
+        or runtime_ev.get("third_party_invoke")
+        or runtime_ev.get("third_party_provider")
+    ):
         return True
 
     return False
@@ -777,7 +1022,13 @@ def _detox_androidish_from_text(text: str, runtime_ev: Dict[str, bool]) -> bool:
     if not DETOX_INVOKE_RE.search(low):
         return False
 
-    if runtime_ev.get("emu_comm") or runtime_ev.get("emu_custom") or runtime_ev.get("real_device") or runtime_ev.get("third_party_invoke"):
+    if (
+        runtime_ev.get("emu_comm")
+        or runtime_ev.get("emu_custom")
+        or runtime_ev.get("real_device")
+        or runtime_ev.get("third_party_invoke")
+        or runtime_ev.get("third_party_provider")
+    ):
         return True
 
     if re.search(r"(?is)\b(android|emulator|avd|adb)\b", low):
@@ -826,19 +1077,20 @@ def step_matches_stage1_anchor(step_name: str, stage1_anchor_names: List[str]) -
 # =========================
 # Category detection (YAML-based)
 # =========================
-def compute_category_from_yaml(step_name: str, y: Optional[Dict[str, str]]) -> Tuple[str, str]:
-    if not y:
+def compute_category_from_yaml(step_name: str, y: Optional[Dict[str, str]], followed_text: str = "") -> Tuple[str, str]:
+    if not y and not followed_text:
         if is_runner_injected_step(step_name):
             return "other", "runner_injected_no_yaml"
         return "other", "no_yaml_block"
 
+    y = y or {}
     run_txt = y.get("run", "") or ""
     uses_txt = y.get("uses", "") or ""
     script_txt = y.get("with_script", "") or ""
     blob = y.get("blob", "") or ""
 
-    combined_raw = "\n".join([step_name or "", run_txt, uses_txt, script_txt, blob])
-    step_local_raw = "\n".join([step_name or "", run_txt, uses_txt, script_txt])
+    combined_raw = "\n".join([step_name or "", run_txt, uses_txt, script_txt, blob, followed_text or ""])
+    step_local_raw = "\n".join([step_name or "", run_txt, uses_txt, script_txt, followed_text or ""])
 
     combined_raw = sanitize_gha_expr(combined_raw)
     step_local_raw = sanitize_gha_expr(step_local_raw)
@@ -890,6 +1142,7 @@ def classify_step(
     workflow_path: str,
     job_name: str,
     stage1_anchor_names: List[str],
+    followed_text: str = "",
 ) -> Dict[str, Union[bool, str]]:
     y = y or {}
     run_txt = y.get("run", "") or ""
@@ -897,8 +1150,8 @@ def classify_step(
     script_txt = y.get("with_script", "") or ""
     blob = y.get("blob", "") or ""
 
-    combined_raw = "\n".join([step_name or "", run_txt, uses_txt, script_txt, blob])
-    step_local_raw = "\n".join([step_name or "", run_txt, uses_txt, script_txt])
+    combined_raw = "\n".join([step_name or "", run_txt, uses_txt, script_txt, blob, followed_text or ""])
+    step_local_raw = "\n".join([step_name or "", run_txt, uses_txt, script_txt, followed_text or ""])
 
     combined = sanitize_gha_expr(combined_raw)
     step_local = sanitize_gha_expr(step_local_raw)
@@ -913,18 +1166,19 @@ def classify_step(
     detox_androidish = _detox_androidish_from_text(step_local, runtime_ev)
 
     third_party_provider = bool(THIRD_PARTY_PROVIDER_RE.search(step_local)) or bool(THIRD_PARTY_PROVIDER_RE.search(combined))
+    third_party_config_hint = bool(THIRD_PARTY_CONFIG_HINT_RE.search(step_local)) or bool(THIRD_PARTY_CONFIG_HINT_RE.search(combined))
+    third_party_provider_action = bool(THIRD_PARTY_PROVIDER_ACTION_RE.search(step_local)) or bool(THIRD_PARTY_PROVIDER_ACTION_RE.search(combined))
     third_party_instru_invoke = bool(THIRD_PARTY_INSTRU_INVOKE_RE.search(step_local))
 
     local_instru_invoke = bool(LOCAL_INSTRU_INVOKE_RE.search(step_local))
     is_gradle = bool(GRADLE_CMD_RE.search(step_local))
     gradle_androidtest = bool(re.search(r"(?i)\b(\w*androidtest)\b", step_local)) and is_gradle
 
-    explicit_instru_exec = bool(
-        (local_instru_invoke and (("adb shell am instrument" in step_local.lower()) or is_gradle))
-        or gradle_androidtest
-        or third_party_instru_invoke
-        or flutter_androidish
-        or detox_androidish
+    third_party_lifecycle = bool(
+        third_party_instru_invoke
+        or third_party_provider_action
+        or (third_party_provider and THIRD_PARTY_CONTINUATION_RE.search("\n".join([step_name or "", job_name or "", step_local, combined])))
+        or (third_party_config_hint and third_party_provider)
     )
 
     has_gmd_context = ("gmd" in styles_l) or ("gmd" in wi_l) or ("gmd" in wp_l) or ("gmd" in jn_l)
@@ -946,9 +1200,57 @@ def classify_step(
 
     stage1_anchor_match, stage1_anchor_match_reason = step_matches_stage1_anchor(step_name, stage1_anchor_names)
 
+    followed_has_local_instru = bool(LOCAL_INSTRU_INVOKE_RE.search(followed_text or ""))
+    followed_has_flutter_androidish = _flutter_androidish_from_text(followed_text or "", runtime_ev)
+    followed_has_detox_androidish = _detox_androidish_from_text(followed_text or "", runtime_ev)
+    followed_has_gradle_androidtest = bool(
+        re.search(r"(?i)\b\w*androidtest\b", sanitize_gha_expr(followed_text or ""))
+        and GRADLE_CMD_RE.search(sanitize_gha_expr(followed_text or ""))
+    )
+    custom_capable_workflow = ("custom" in styles_l)
+
+    custom_wrapper_hint = bool(
+        emu_custom_script
+        or CUSTOM_WRAPPER_STEP_RE.search(step_name or "")
+        or CUSTOM_WRAPPER_STEP_RE.search(job_name or "")
+    )
+
+    custom_followed_file_instru = bool(
+        custom_capable_workflow
+        and (
+            followed_has_local_instru
+            or followed_has_flutter_androidish
+            or followed_has_detox_androidish
+            or followed_has_gradle_androidtest
+        )
+    )
+
+    custom_stage1_supported_exec = bool(
+        custom_capable_workflow
+        and not custom_followed_file_instru
+        and (
+            stage1_anchor_match
+            or (custom_wrapper_hint and INSTRU_TASK_NAME_HINT_RE.search("\n".join([step_name or "", job_name or "", step_local or ""])))
+        )
+    )
+
+    explicit_instru_exec = bool(
+        (local_instru_invoke and (("adb shell am instrument" in step_local.lower()) or is_gradle))
+        or gradle_androidtest
+        or third_party_instru_invoke
+        or flutter_androidish
+        or detox_androidish
+        or third_party_lifecycle
+        or custom_followed_file_instru
+        or custom_stage1_supported_exec
+    )
+
     return {
         "explicit_instru": explicit_instru_exec,
         "third_party_provider": third_party_provider,
+        "third_party_provider_action": third_party_provider_action,
+        "third_party_config_hint": third_party_config_hint,
+        "third_party_lifecycle": third_party_lifecycle,
         "third_party_instru_invoke": third_party_instru_invoke,
         "flutter_integration_androidish": flutter_androidish,
         "detox_androidish": detox_androidish,
@@ -964,18 +1266,26 @@ def classify_step(
         "real_device": real_device,
         "stage1_anchor_match": stage1_anchor_match,
         "stage1_anchor_match_reason": stage1_anchor_match_reason,
+        "custom_followed_file_instru": custom_followed_file_instru,
+        "custom_stage1_supported_exec": custom_stage1_supported_exec,
+        "custom_capable_workflow": custom_capable_workflow,
     }
 
 def is_exec_step(flags: Dict[str, Union[bool, str]]) -> bool:
     return bool(
         flags.get("explicit_instru")
         or flags.get("third_party_instru_invoke")
+        or flags.get("third_party_lifecycle")
+        or (flags.get("third_party_provider") and flags.get("third_party_config_hint"))
+        or (flags.get("third_party_provider") and flags.get("third_party_provider_action"))
         or flags.get("gmd_lifecycle_task")
         or flags.get("emu_community_action")
         or flags.get("gradle_androidtest")
         or flags.get("baseline_profile")
         or flags.get("flutter_integration_androidish")
         or flags.get("detox_androidish")
+        or flags.get("custom_followed_file_instru")
+        or flags.get("custom_stage1_supported_exec")
     )
 
 # =========================
@@ -984,10 +1294,6 @@ def is_exec_step(flags: Dict[str, Union[bool, str]]) -> bool:
 def pick_instru_anchor_from_candidates(
     cands: List[Tuple[datetime, str, str, Dict[str, Union[bool, str]]]]
 ) -> Tuple[Optional[datetime], str, str, str, Dict[str, Union[bool, str]]]:
-    """
-    Returns:
-      (anchor_step_start_dt, anchor_step_name, anchor_job_name, anchor_source, anchor_flags)
-    """
     if not cands:
         return None, "", "", "missing", {}
 
@@ -1006,6 +1312,24 @@ def pick_instru_anchor_from_candidates(
         tier1.sort(key=lambda x: x[0])
         t, n, jn, f = tier1[0]
         return t, n, jn, "explicit_instru_step", f
+
+    tier1c = [(t, n, jn, f) for (t, n, jn, f) in cands if f.get("custom_followed_file_instru")]
+    if tier1c:
+        tier1c.sort(key=lambda x: x[0])
+        t, n, jn, f = tier1c[0]
+        return t, n, jn, "custom_followed_file_instru_step", f
+
+    tier1d = [(t, n, jn, f) for (t, n, jn, f) in cands if f.get("custom_stage1_supported_exec")]
+    if tier1d:
+        tier1d.sort(key=lambda x: x[0])
+        t, n, jn, f = tier1d[0]
+        return t, n, jn, "custom_stage1_supported_step", f
+
+    tier1b = [(t, n, jn, f) for (t, n, jn, f) in cands if f.get("third_party_lifecycle")]
+    if tier1b:
+        tier1b.sort(key=lambda x: x[0])
+        t, n, jn, f = tier1b[0]
+        return t, n, jn, "third_party_lifecycle_step", f
 
     tier2 = [(t, n, jn, f) for (t, n, jn, f) in cands if f.get("gmd_setup") or f.get("gmd_lifecycle_task")]
     if tier2:
@@ -1031,6 +1355,12 @@ def pick_instru_anchor_from_candidates(
         t, n, jn, f = tier5[0]
         return t, n, jn, "baseline_profile_step", f
 
+    tier6 = [(t, n, jn, f) for (t, n, jn, f) in cands if f.get("third_party_provider") and (f.get("third_party_provider_action") or f.get("third_party_config_hint"))]
+    if tier6:
+        tier6.sort(key=lambda x: x[0])
+        t, n, jn, f = tier6[0]
+        return t, n, jn, "third_party_provider_fallback", f
+
     return None, "", "", "missing", {}
 
 # =========================
@@ -1053,12 +1383,12 @@ STYLE_METRIC_KEYS = [
     "test_exec_started_at",
     "test_exec_ended_at",
 
-    "instru_duration_seconds",        # FULL instrumentation-path window
+    "instru_duration_seconds",
     "pre_test_overhead_seconds",
-    "core_instru_window_seconds",     # CORE execution span only
+    "core_instru_window_seconds",
     "post_test_overhead_seconds",
     "instru_exec_sum_seconds",
-    "instru_exec_window_seconds",     # same as core_instru_window_seconds
+    "instru_exec_window_seconds",
     "instru_exec_step_count",
 
     "env_setup_sum_seconds",
@@ -1066,21 +1396,21 @@ STYLE_METRIC_KEYS = [
 ]
 
 def infer_style_name(flags: Dict[str, Union[bool, str]]) -> str:
-    if flags.get("third_party_instru_invoke") or flags.get("third_party_provider"):
+    if flags.get("third_party_instru_invoke") or flags.get("third_party_provider") or flags.get("third_party_lifecycle"):
         return "Third-Party"
     if flags.get("gmd_setup") or flags.get("gmd_lifecycle_task"):
         return "GMD"
     if flags.get("emu_community_action"):
-        return "Emu_Community"
-    if flags.get("emu_custom_script"):
-        return "Emu_Custom"
+        return "Community"
+    if flags.get("emu_custom_script") or flags.get("custom_followed_file_instru") or flags.get("custom_stage1_supported_exec"):
+        return "Custom"
     if flags.get("real_device"):
-        return "Real-Device"
+        return "Real-Devices"
     return ""
 
 def is_third_party_continuation_step(step_name: str, job_name: str, flags: Dict[str, Union[bool, str]]) -> bool:
     text = "\n".join([step_name or "", job_name or ""])
-    if flags.get("third_party_instru_invoke") or flags.get("third_party_provider"):
+    if flags.get("third_party_instru_invoke") or flags.get("third_party_provider") or flags.get("third_party_lifecycle"):
         return True
     if flags.get("artifact"):
         return True
@@ -1094,20 +1424,9 @@ def compute_style_aware_instru_end(
     exec_last: Optional[datetime],
     step_times: List[Tuple[Optional[datetime], Optional[datetime], str, str, Dict[str, Union[bool, str]]]],
 ) -> Optional[datetime]:
-    """
-    Returns style-aware instrumentation end.
-
-    Default styles:
-      constrain to anchor job if known, else exec-step jobs
-
-    Third-Party:
-      allow controlled multi-job extension across later instrumentation-related
-      provider/result jobs after execution
-    """
     if exec_first is None:
         return exec_last
 
-    # Default same-job / exec-job-scope behavior
     allowed_jobs_default: Optional[Set[str]] = None
     if anchor_job_name:
         allowed_jobs_default = {anchor_job_name}
@@ -1125,10 +1444,9 @@ def compute_style_aware_instru_end(
                 if latest_end_default is None or st_end > latest_end_default:
                     latest_end_default = st_end
 
-    if target_style != "Third-Party":
+    if normalize_style_label(target_style) != "Third-Party":
         return latest_end_default or exec_last
 
-    # Third-Party controlled multi-job extension
     base_jobs: Set[str] = set()
     if anchor_job_name:
         base_jobs.add(anchor_job_name)
@@ -1136,7 +1454,6 @@ def compute_style_aware_instru_end(
 
     candidate_jobs: Set[str] = set(base_jobs)
 
-    # Include later jobs only if they still look like continuation of remote/provider lifecycle
     for (st_start, st_end, jn, step_name, flags) in step_times:
         if not st_start or not st_end or not jn:
             continue
@@ -1272,7 +1589,6 @@ def compute_metrics_for_event_set(
     job_first_step_start: Dict[str, datetime] = {}
     exec_job_names: Set[str] = set()
 
-    # style-aware step time collection
     step_times: List[Tuple[Optional[datetime], Optional[datetime], str, str, Dict[str, Union[bool, str]]]] = []
 
     for (st_start, st_end, st_dur, step_name, job_name, flags) in events:
@@ -1313,11 +1629,15 @@ def compute_metrics_for_event_set(
                 f.get("stage1_anchor_match")
                 or f.get("explicit_instru")
                 or f.get("third_party_instru_invoke")
+                or f.get("third_party_lifecycle")
+                or (f.get("third_party_provider") and (f.get("third_party_provider_action") or f.get("third_party_config_hint")))
                 or f.get("gmd_setup")
                 or f.get("gmd_lifecycle_task")
                 or f.get("baseline_profile")
                 or f.get("flutter_integration_androidish")
                 or f.get("detox_androidish")
+                or f.get("custom_followed_file_instru")
+                or (normalize_style_label(target_style) == "Custom" and f.get("custom_stage1_supported_exec"))
                 or INSTRU_TASK_NAME_HINT_RE.search(n or "")
             )
             if has_instru_evidence:
@@ -1328,7 +1648,6 @@ def compute_metrics_for_event_set(
             anchor_dt, _anchor_name, anchor_job_name, _f_source, _f_flags = fallback[0]
             anchor_source = "fallback_instru_evidence"
 
-    # TTFTS
     if anchor_dt and base_start:
         out["instru_started_at"] = anchor_dt.isoformat().replace("+00:00", "Z")
         out["first_test_step_started_at"] = out["instru_started_at"]
@@ -1339,7 +1658,6 @@ def compute_metrics_for_event_set(
             out["ttfts_seconds"] = 0
             out["ttfts_source"] = "workflow_label_proxy"
 
-    # modified TTFTS
     if anchor_dt and anchor_job_name and anchor_job_name in job_first_step_start:
         anchor_job_start_dt = job_first_step_start[anchor_job_name]
         mod = dt_to_seconds(anchor_job_start_dt, anchor_dt)
@@ -1382,7 +1700,6 @@ def compute_metrics_for_event_set(
             out["modified_ttfts_source"] = "workflow_label_proxy"
             out["modified_ttfts_quality"] = "workflow_label_proxy"
 
-    # jobs-to-anchor
     if anchor_job_name and job_first_step_start:
         ordered_jobs = sorted(job_first_step_start.items(), key=lambda kv: kv[1])
         idx = None
@@ -1404,7 +1721,6 @@ def compute_metrics_for_event_set(
     if exec_last:
         out["test_exec_ended_at"] = exec_last.isoformat().replace("+00:00", "Z")
 
-    # STYLE-AWARE instrumentation end
     instru_end = compute_style_aware_instru_end(
         target_style=target_style,
         anchor_job_name=anchor_job_name,
@@ -1417,11 +1733,9 @@ def compute_metrics_for_event_set(
     if instru_end:
         out["instru_ended_at"] = instru_end.isoformat().replace("+00:00", "Z")
 
-    # FULL instrumentation-path window
     if anchor_dt and instru_end:
         out["instru_duration_seconds"] = dt_to_seconds(anchor_dt, instru_end)
 
-    # Within-window decomposition
     if anchor_dt and exec_first:
         out["pre_test_overhead_seconds"] = dt_to_seconds(anchor_dt, exec_first)
 
@@ -1440,6 +1754,8 @@ def compute_metrics_for_event_set(
 # Stage 3 builders
 # =========================
 def build_stage3_outputs_for_run(
+    gh: GitHubClient,
+    file_text_cache: Dict[Tuple[str, str, str], str],
     jobs: List[Dict],
     run_created_at: str,
     run_started_at: str,
@@ -1454,6 +1770,10 @@ def build_stage3_outputs_for_run(
     workflow_identifier: str,
     workflow_path: str,
     head_sha: str,
+    called_instru_signal: bool,
+    called_instru_file_paths: List[str],
+    called_instru_origin_refs: List[str],
+    called_instru_origin_step_names: List[str],
 ) -> Tuple[Dict[str, Union[str, int, float, None]], List[Dict[str, str]], List[Dict[str, str]]]:
 
     run_metrics: Dict[str, Union[str, int, float, None]] = {k: ("" if k.endswith("_at") else None) for k in STYLE_METRIC_KEYS}
@@ -1472,6 +1792,16 @@ def build_stage3_outputs_for_run(
     per_style_rows: List[Dict[str, str]] = []
 
     base_start = iso_to_dt(run_started_at) or iso_to_dt(run_created_at)
+
+    confirmed_called_file_text = ""
+    if called_instru_signal and called_instru_file_paths:
+        confirmed_called_file_text = fetch_stage1_confirmed_called_file_text(
+            gh=gh,
+            full_name=full_name,
+            head_sha=head_sha,
+            called_instru_file_paths=called_instru_file_paths,
+            file_text_cache=file_text_cache,
+        )
 
     if not jobs:
         baseline = compute_metrics_for_event_set(base_start, [], stage2_instru_detect_method, s2_fallback, target_style="")
@@ -1557,6 +1887,17 @@ def build_stage3_outputs_for_run(
                 yaml_with_script_snip = _snip(y.get("with_script", "") or "", 220)
                 yaml_block_snip = _snip(y.get("blob", "") or "", 280)
 
+            followed_text = ""
+            if runner_injected != "1" and should_use_stage1_confirmed_called_file_evidence(
+                step_name=step_name,
+                y=y,
+                styles_text=styles_text,
+                called_instru_signal=called_instru_signal,
+                called_instru_origin_step_names=called_instru_origin_step_names,
+                called_instru_origin_refs=called_instru_origin_refs,
+            ):
+                followed_text = confirmed_called_file_text
+
             flags = classify_step(
                 step_name=step_name,
                 y=y,
@@ -1565,6 +1906,7 @@ def build_stage3_outputs_for_run(
                 workflow_path=workflow_path,
                 job_name=job_name,
                 stage1_anchor_names=stage1_anchor_names,
+                followed_text=followed_text,
             )
 
             if flags.get("third_party_provider") and job_name and job_name not in counted_tp_provider_jobs:
@@ -1572,7 +1914,7 @@ def build_stage3_outputs_for_run(
                 third_party_provider_count += 1
                 third_party_provider_job_names.append(job_name)
 
-            if flags.get("third_party_instru_invoke") and job_name and job_name not in counted_tp_exec_jobs:
+            if (flags.get("third_party_instru_invoke") or flags.get("third_party_lifecycle")) and job_name and job_name not in counted_tp_exec_jobs:
                 counted_tp_exec_jobs.add(job_name)
                 third_party_count += 1
                 third_party_job_names.append(job_name)
@@ -1581,7 +1923,7 @@ def build_stage3_outputs_for_run(
             if st_dur is None:
                 st_dur = dt_to_seconds(job_start, job_end)
 
-            category, category_reason = compute_category_from_yaml(step_name, y)
+            category, category_reason = compute_category_from_yaml(step_name, y, followed_text=followed_text)
 
             tmp_steps.append((
                 job_id, job_name, st_start, st_end, st_dur, flags, step_name, category, category_reason,
@@ -1608,50 +1950,77 @@ def build_stage3_outputs_for_run(
         yaml_run_snip, yaml_uses_snip, yaml_with_script_snip, yaml_block_snip
     ) in tmp_steps_sorted:
 
-        inferred_style = infer_style_name(flags)
+        inferred_style = normalize_style_label(infer_style_name(flags))
 
         if not is_multi_style:
             if not seen_first_anchor:
                 if category == "test" or is_exec_step(flags) or bool(flags.get("stage1_anchor_match")):
                     seen_first_anchor = True
                 else:
-                    step_rows.append({
-                        "full_name": full_name,
-                        "run_id": run_id,
-                        "workflow_identifier": workflow_identifier,
-                        "workflow_path": workflow_path,
-                        "head_sha": head_sha,
-                        "styles": styles_text,
-                        "job_id": job_id,
-                        "job_name": job_name,
-                        "step_name": step_name,
-                        "category": category,
-                        "category_reason": category_reason,
-                        "step_style_tag": "",
-                        "step_style_reason": "",
-                        "started_at": st_start.isoformat() if st_start else "",
-                        "completed_at": st_end.isoformat() if st_end else "",
-                        "duration_seconds": "" if st_dur is None else str(st_dur),
-                        "step_norm_key": step_norm_key,
-                        "runner_injected": runner_injected,
-                        "yaml_match": yaml_match,
-                        "yaml_match_reason": yaml_match_reason,
-                        "yaml_step_name": yaml_step_name,
-                        "yaml_run_snip": yaml_run_snip,
-                        "yaml_uses_snip": yaml_uses_snip,
-                        "yaml_with_script_snip": yaml_with_script_snip,
-                        "yaml_block_snip": yaml_block_snip,
-                        "stage1_anchor_match": "1" if flags.get("stage1_anchor_match") else "0",
-                        "stage1_anchor_match_reason": str(flags.get("stage1_anchor_match_reason") or ""),
-                    })
-                    continue
+                    if first_style == "Third-Party" and (
+                        flags.get("third_party_provider")
+                        or flags.get("third_party_provider_action")
+                        or flags.get("third_party_config_hint")
+                        or flags.get("third_party_lifecycle")
+                    ):
+                        seen_first_anchor = True
+                    elif first_style == "Custom" and (
+                        flags.get("custom_followed_file_instru")
+                        or flags.get("custom_stage1_supported_exec")
+                    ):
+                        seen_first_anchor = True
+                    else:
+                        step_rows.append({
+                            "full_name": full_name,
+                            "run_id": run_id,
+                            "workflow_identifier": workflow_identifier,
+                            "workflow_path": workflow_path,
+                            "head_sha": head_sha,
+                            "styles": styles_text,
+                            "job_id": job_id,
+                            "job_name": job_name,
+                            "step_name": step_name,
+                            "category": category,
+                            "category_reason": category_reason,
+                            "step_style_tag": "",
+                            "step_style_reason": "",
+                            "started_at": st_start.isoformat() if st_start else "",
+                            "completed_at": st_end.isoformat() if st_end else "",
+                            "duration_seconds": "" if st_dur is None else str(st_dur),
+                            "step_norm_key": step_norm_key,
+                            "runner_injected": runner_injected,
+                            "yaml_match": yaml_match,
+                            "yaml_match_reason": yaml_match_reason,
+                            "yaml_step_name": yaml_step_name,
+                            "yaml_run_snip": yaml_run_snip,
+                            "yaml_uses_snip": yaml_uses_snip,
+                            "yaml_with_script_snip": yaml_with_script_snip,
+                            "yaml_block_snip": yaml_block_snip,
+                            "stage1_anchor_match": "1" if flags.get("stage1_anchor_match") else "0",
+                            "stage1_anchor_match_reason": str(flags.get("stage1_anchor_match_reason") or ""),
+                        })
+                        continue
 
             step_style_tag = first_style
             step_style_reason = "single_style_run_override"
         else:
-            # For multi-style runs, switch segment when a step explicitly signals a style
             if inferred_style and inferred_style in declared_styles:
                 current_style = inferred_style
+            elif current_style == "Third-Party" and (
+                flags.get("third_party_provider")
+                or flags.get("third_party_provider_action")
+                or flags.get("third_party_lifecycle")
+                or flags.get("third_party_config_hint")
+                or is_third_party_continuation_step(step_name, job_name, flags)
+            ):
+                current_style = "Third-Party"
+            elif current_style == "Custom" and (
+                flags.get("custom_followed_file_instru")
+                or flags.get("custom_stage1_supported_exec")
+                or flags.get("emu_custom_script")
+            ):
+                current_style = "Custom"
+
             step_style_tag = current_style
             step_style_reason = "segment_inferred_from_anchor" if current_style else ""
 
@@ -1768,9 +2137,10 @@ def main() -> None:
                 or det not in ("", "none", "unknown")
                 or ("third-party" in styles)
                 or ("gmd" in styles)
-                or ("emu_custom" in styles)
-                or ("emu_community" in styles)
+                or ("custom" in styles)
+                or ("community" in styles)
                 or ("real-device" in styles)
+                or ("real-devices" in styles)
                 or ("3p-cli" in inv)
                 or ("detox" in inv)
                 or ("flutter integration test" in inv)
@@ -1841,6 +2211,7 @@ def main() -> None:
 
     yaml_steps_cache: Dict[Tuple[str, str, str], Dict[str, Dict[str, str]]] = {}
     yaml_job_uses_cache: Dict[Tuple[str, str, str], Dict[str, str]] = {}
+    file_text_cache: Dict[Tuple[str, str, str], str] = {}
 
     it = target
     if tqdm is not None:
@@ -1859,6 +2230,11 @@ def main() -> None:
         styles_text = (r.get("styles") or "")
         stage2_det = (r.get("instru_detect_method") or "")
         stage1_anchor_names = parse_stage1_anchor_names(r.get("test_invocation_step_names", ""))
+
+        called_instru_signal = (r.get("called_instru_signal") or "").strip().lower() in {"1", "true", "yes", "y"}
+        called_instru_file_paths = parse_csv_list_field(r.get("called_instru_file_paths", ""))
+        called_instru_origin_refs = parse_csv_list_field(r.get("called_instru_origin_refs", ""))
+        called_instru_origin_step_names = parse_csv_list_field(r.get("called_instru_origin_step_names", ""))
 
         if not full_name or not run_id:
             continue
@@ -1914,6 +2290,8 @@ def main() -> None:
         jobs = list_run_jobs(gh, full_name, int(run_id)) or []
 
         run_metrics, step_rows, per_style_rows = build_stage3_outputs_for_run(
+            gh=gh,
+            file_text_cache=file_text_cache,
             jobs=jobs,
             run_created_at=created_at,
             run_started_at=run_started_at,
@@ -1928,6 +2306,10 @@ def main() -> None:
             workflow_identifier=workflow_identifier,
             workflow_path=workflow_path,
             head_sha=head_sha,
+            called_instru_signal=called_instru_signal,
+            called_instru_file_paths=called_instru_file_paths,
+            called_instru_origin_refs=called_instru_origin_refs,
+            called_instru_origin_step_names=called_instru_origin_step_names,
         )
 
         extracted_ts = now_utc_iso()

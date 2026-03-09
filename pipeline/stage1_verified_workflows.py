@@ -24,6 +24,13 @@
 # 8) NEW (ONLY): Add STRICT BrowserStack "indirect invocation" detection
 #    - Requires BrowserStack signal AND credible execution trigger (API/script/CLI/gradle task)
 #    - Prevents FP from mere env/setup mentions
+#
+# 9) NEW (ONLY): Persist called-file instrumentation evidence for downstream stages
+#    => called_instru_signal
+#    => called_instru_file_paths
+#    => called_instru_origin_refs
+#    => called_instru_origin_step_names
+#    => called_instru_file_types
 # ============================================================
 
 import base64
@@ -122,6 +129,12 @@ def safe_join(items: List[str], max_len: int = 1500) -> str:
         return s
     return s[: max_len - 3] + "..."
 
+def safe_join_pipe(items: List[str], max_len: int = 3000) -> str:
+    s = "|".join(unique_preserve(items))
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 3] + "..."
+
 def parse_repo_full_name(url: str) -> str:
     u = (url or "").strip()
     if not u:
@@ -147,13 +160,19 @@ def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
     - In GitHub Actions, reads GH_PAT/GITHUB_TOKEN from environment.
     - Locally, will also read from env_path if it exists.
     """
-    # config.runtime.load_github_tokens already checks env vars first and
-    # falls back to reading env_path only if it exists.
     return load_github_tokens(env_path=env_path, max_tokens=max_tokens)
 
 def sanitize_gha_expr(text: str) -> str:
     # "connected${{ matrix.flavor }}DebugAndroidTest" -> "connectedDebugAndroidTest"
     return GHA_EXPR_RE.sub("", text or "")
+
+def normalize_repo_rel_path(ref: str) -> str:
+    rr = (ref or "").replace("\\", "/").strip()
+    rr = rr[2:] if rr.startswith("./") else rr
+    rr = rr.lstrip("/")
+    while "//" in rr:
+        rr = rr.replace("//", "/")
+    return rr
 
 # =========================
 # GitHub API client
@@ -604,6 +623,14 @@ def possible_action_ymls(path: str) -> List[str]:
     p = path.strip("/")
     return unique_preserve([f"{p}/action.yml", f"{p}/action.yaml"])
 
+def classify_called_file_type(path: str) -> str:
+    low = (path or "").lower().replace("\\", "/")
+    if low.endswith("action.yml") or low.endswith("action.yaml"):
+        return "local_action"
+    if "/.github/workflows/" in f"/{low}":
+        return "local_workflow"
+    return "script"
+
 # =========================
 # Step parsing for invocation step names + anchor ordinals (UNCHANGED)
 # =========================
@@ -720,6 +747,20 @@ def parse_workflow_step_records(yaml_text: str) -> List[Dict[str, Union[str, int
                 k = kk
         i = j
 
+    return out
+
+def build_origin_ref_to_step_names(workflow_yaml_text: str) -> Dict[str, List[str]]:
+    out: Dict[str, List[str]] = {}
+    for rec in parse_workflow_step_records(workflow_yaml_text):
+        step_name = str(rec.get("step_name") or "").strip()
+        step_block = str(rec.get("step_block") or "")
+        refs = extract_references(step_block)
+        for r in refs:
+            rr = normalize_repo_rel_path(r)
+            if not rr:
+                continue
+            out.setdefault(rr, [])
+            out[rr] = unique_preserve(out[rr] + [step_name])
     return out
 
 def _flutter_androidish_from_text(text: str, runtime_ev: Dict[str, bool]) -> bool:
@@ -1039,22 +1080,31 @@ def infer_instru_detect_method(styles: List[str], inv: List[str]) -> str:
     return "none"
 
 # =========================
-# Called-file following via GitHub API (UNCHANGED)
+# Called-file following via GitHub API (ADJUSTED ONLY TO PERSIST CALLED-FILE INSTRU EVIDENCE)
 # =========================
 def follow_called_files(
     gh: GitHubClient,
     full_name: str,
     base_ref: str,
     root_text: str,
+    origin_ref_to_step_names: Optional[Dict[str, List[str]]] = None,
     max_depth: int = MAX_FOLLOW_DEPTH,
-) -> Tuple[Dict, int, int, List[str]]:
+) -> Tuple[Dict, int, int, List[str], bool, List[str], List[str], List[str], List[str]]:
     if not FOLLOW_CALLED_FILES:
-        return scan_text_for_evidence(root_text), 0, 0, []
+        return scan_text_for_evidence(root_text), 0, 0, [], False, [], [], [], []
 
     agg_evidence = scan_text_for_evidence(root_text)
     unresolved_dynamic = 0
     followed_paths: List[str] = []
     visited: Set[str] = set()
+
+    called_instru_signal = False
+    called_instru_file_paths: List[str] = []
+    called_instru_origin_refs: List[str] = []
+    called_instru_origin_step_names: List[str] = []
+    called_instru_file_types: List[str] = []
+
+    origin_ref_to_step_names = origin_ref_to_step_names or {}
 
     def fetch_and_scan(path: str) -> Optional[Tuple[str, Dict]]:
         sz = file_size_at_ref(gh, full_name, path, base_ref)
@@ -1065,6 +1115,16 @@ def follow_called_files(
             return None
         ev = scan_text_for_evidence(txt)
         return txt, ev
+
+    def register_called_instru(path: str, origin_ref: str) -> None:
+        nonlocal called_instru_signal, called_instru_file_paths, called_instru_origin_refs, called_instru_origin_step_names, called_instru_file_types
+        called_instru_signal = True
+        norm_path = normalize_repo_rel_path(path)
+        norm_origin = normalize_repo_rel_path(origin_ref)
+        called_instru_file_paths.append(norm_path)
+        called_instru_origin_refs.append(norm_origin)
+        called_instru_file_types.append(classify_called_file_type(norm_path))
+        called_instru_origin_step_names.extend(origin_ref_to_step_names.get(norm_origin, []))
 
     def walk(text: str, depth: int) -> None:
         nonlocal agg_evidence, unresolved_dynamic, followed_paths, visited
@@ -1081,6 +1141,7 @@ def follow_called_files(
                 unresolved_dynamic += 1
                 continue
 
+            norm_origin_ref = normalize_repo_rel_path(r)
             candidates = candidate_paths_for_ref(r, wds)
             is_prob_action = bool(r.strip().startswith("./")) and (r.endswith("/") or "/" in r)
 
@@ -1098,6 +1159,8 @@ def follow_called_files(
                             followed_paths.append(ay)
                             txt2, ev2 = got
                             agg_evidence = merge_evidence(agg_evidence, ev2)
+                            if compute_looks_like_instru(ev2) == "yes":
+                                register_called_instru(ay, norm_origin_ref)
                             walk(txt2, depth + 1)
 
                 got = fetch_and_scan(c)
@@ -1106,10 +1169,22 @@ def follow_called_files(
                     followed_paths.append(c)
                     txt2, ev2 = got
                     agg_evidence = merge_evidence(agg_evidence, ev2)
+                    if compute_looks_like_instru(ev2) == "yes":
+                        register_called_instru(c, norm_origin_ref)
                     walk(txt2, depth + 1)
 
     walk(root_text, 0)
-    return agg_evidence, len(unique_preserve(followed_paths)), int(unresolved_dynamic), unique_preserve(followed_paths)
+    return (
+        agg_evidence,
+        len(unique_preserve(followed_paths)),
+        int(unresolved_dynamic),
+        unique_preserve(followed_paths),
+        bool(called_instru_signal),
+        unique_preserve(called_instru_file_paths),
+        unique_preserve(called_instru_origin_refs),
+        unique_preserve(called_instru_origin_step_names),
+        unique_preserve(called_instru_file_types),
+    )
 
 # =========================
 # Stage-1 processing
@@ -1134,11 +1209,24 @@ def build_stage1_rows_for_repo(gh: GitHubClient, full_name: str, repo_url: str) 
         if not yaml_text:
             continue
 
-        ev0, followed_count, unresolved_dyn, followed_paths = follow_called_files(
+        origin_ref_to_step_names = build_origin_ref_to_step_names(yaml_text)
+
+        (
+            ev0,
+            followed_count,
+            unresolved_dyn,
+            followed_paths,
+            called_instru_signal,
+            called_instru_file_paths,
+            called_instru_origin_refs,
+            called_instru_origin_step_names,
+            called_instru_file_types,
+        ) = follow_called_files(
             gh=gh,
             full_name=full_name,
             base_ref=default_branch,
             root_text=yaml_text,
+            origin_ref_to_step_names=origin_ref_to_step_names,
             max_depth=MAX_FOLLOW_DEPTH,
         )
 
@@ -1174,6 +1262,13 @@ def build_stage1_rows_for_repo(gh: GitHubClient, full_name: str, repo_url: str) 
             "followed_files_count": str(followed_count),
             "unresolved_dynamic_refs_count": str(unresolved_dyn),
             "followed_paths": safe_join(followed_paths, max_len=1500),
+
+            "called_instru_signal": "True" if called_instru_signal else "False",
+            "called_instru_file_paths": safe_join_pipe(called_instru_file_paths, max_len=3000),
+            "called_instru_origin_refs": safe_join_pipe(called_instru_origin_refs, max_len=3000),
+            "called_instru_origin_step_names": safe_join_pipe(called_instru_origin_step_names, max_len=3000),
+            "called_instru_file_types": safe_join_pipe(called_instru_file_types, max_len=1000),
+
             "stage1_extracted_at_utc": now_utc_iso(),
         }
         out_rows.append(row)
@@ -1228,6 +1323,11 @@ def main() -> None:
                 "followed_files_count": "0",
                 "unresolved_dynamic_refs_count": "0",
                 "followed_paths": "",
+                "called_instru_signal": "False",
+                "called_instru_file_paths": "",
+                "called_instru_origin_refs": "",
+                "called_instru_origin_step_names": "",
+                "called_instru_file_types": "",
                 "stage1_extracted_at_utc": now_utc_iso(),
             })
             print(f"[warn] {full_name}: {e}")
@@ -1250,6 +1350,11 @@ def main() -> None:
         "followed_files_count",
         "unresolved_dynamic_refs_count",
         "followed_paths",
+        "called_instru_signal",
+        "called_instru_file_paths",
+        "called_instru_origin_refs",
+        "called_instru_origin_step_names",
+        "called_instru_file_types",
         "stage1_extracted_at_utc",
     ]
 

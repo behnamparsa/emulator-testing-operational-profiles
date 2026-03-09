@@ -122,8 +122,6 @@ def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
     - In GitHub Actions, reads GH_PAT/GITHUB_TOKEN from environment.
     - Locally, will also read from env_path if it exists.
     """
-    # config.runtime.load_github_tokens already checks env vars first and
-    # falls back to reading env_path only if it exists.
     return load_github_tokens(env_path=env_path, max_tokens=max_tokens)
 
 def first_nonempty(row: Dict[str, str], keys: List[str]) -> str:

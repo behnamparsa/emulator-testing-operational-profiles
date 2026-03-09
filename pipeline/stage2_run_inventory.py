@@ -23,6 +23,14 @@
 #     time_to_first_instru_from_anchor_job_quality
 # - Adds S2_ mirrors for the above so Stage 3 can consume them as fallback
 #
+# NEW (ONLY): carries Stage-1 called-file instrumentation evidence fields
+#   so Stage 3 can use them directly without re-following every file:
+#     called_instru_signal
+#     called_instru_file_paths
+#     called_instru_origin_refs
+#     called_instru_origin_step_names
+#     called_instru_file_types
+#
 # Output:
 # - Keeps legacy metrics columns
 # - Adds S2_ mirror/fallback fields for Stage 3 consumption
@@ -121,13 +129,25 @@ def load_existing_keys(csv_path: Path, key_field: str) -> Set[str]:
     return keys
 
 def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
-    """CI-safe token loader.
-    - In GitHub Actions, reads GH_PAT/GITHUB_TOKEN from environment.
-    - Locally, will also read from env_path if it exists.
-    """
-    # config.runtime.load_github_tokens already checks env vars first and
-    # falls back to reading env_path only if it exists.
-    return load_github_tokens(env_path=env_path, max_tokens=max_tokens)
+    if not env_path.exists():
+        raise FileNotFoundError(f"Tokens env file not found: {env_path}")
+
+    tokens: List[str] = []
+    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k.startswith("GITHUB_TOKEN_") and v:
+            tokens.append(v)
+            if len(tokens) >= max_tokens:
+                break
+
+    if not tokens:
+        raise ValueError(f"No tokens found in {env_path}. Expected keys like GITHUB_TOKEN_1=...")
+    return tokens
 
 def unique_preserve(seq: Iterable[str]) -> List[str]:
     seen: Set[str] = set()
@@ -728,6 +748,13 @@ def main() -> None:
         # NEW: pass-through Stage-1 noise indicator if present
         "jobs_before_anchor_count",
 
+        # NEW: pass-through called-file instrumentation evidence from Stage 1
+        "called_instru_signal",
+        "called_instru_file_paths",
+        "called_instru_origin_refs",
+        "called_instru_origin_step_names",
+        "called_instru_file_types",
+
         # run
         "run_id",
         "run_number",
@@ -931,6 +958,13 @@ def main() -> None:
 
                 # NEW pass-through field from Stage 1 (if absent, stays blank)
                 "jobs_before_anchor_count": (wf.get("jobs_before_anchor_count") or ""),
+
+                # NEW pass-through called-file instrumentation evidence from Stage 1
+                "called_instru_signal": (wf.get("called_instru_signal") or ""),
+                "called_instru_file_paths": (wf.get("called_instru_file_paths") or ""),
+                "called_instru_origin_refs": (wf.get("called_instru_origin_refs") or ""),
+                "called_instru_origin_step_names": (wf.get("called_instru_origin_step_names") or ""),
+                "called_instru_file_types": (wf.get("called_instru_file_types") or ""),
 
                 # run metadata
                 "run_id": run_id,

@@ -10,25 +10,27 @@ This version explicitly materializes the study-facing timeline variables:
 - study_run_duration_seconds
 - study_queue_seconds
 - study_ttfts_seconds
-- study_instru_test_window_seconds      # FULL instrumentation path window
+- study_instru_test_window_seconds              # RESOLVED study-facing field (policy-ready)
 - study_other_seconds
 - study_pre_exec_seconds
-- study_exec_span_seconds               # CORE execution span only
+- study_exec_span_seconds
 - study_post_exec_seconds
 
-It also preserves provenance/source fields:
-- study_run_duration_source_final
-- study_queue_source_final
-- study_ttfts_source_final
-- study_ttfts_direct_seconds
-- study_ttfts_fallback_seconds
-- study_ttfts_fallback_compare_seconds
-- study_ttfts_overlap_valid
+It also preserves provenance/source fields and adds policy-ready
+instrumentation-window layering so RQ1 can decide later, per style,
+whether a validated fallback is admissible:
+- study_instru_test_window_direct_seconds
+- study_instru_test_window_direct_source_final
+- study_instru_test_window_fallback_candidate_seconds
+- study_instru_test_window_fallback_candidate_source
+- study_instru_test_window_fallback_candidate_name
+- study_instru_test_window_direct_for_validation_seconds
+- study_instru_test_window_fallback_compare_seconds
+- study_instru_test_window_overlap_valid
+- study_instru_test_window_resolution_policy
+- study_instru_test_window_fallback_eligible
+- study_instru_test_window_seconds
 - study_instru_test_window_source_final
-- study_other_source_final
-- study_pre_exec_source_final
-- study_exec_span_source_final
-- study_post_exec_source_final
 
 MainDataset is explicitly filtered to Stage 3 executed instrumentation runs only:
   instru_job_count > 0
@@ -58,12 +60,25 @@ SIG_COL_CANDIDATES: List[str] = [
     "sig_hash_base",
 ]
 
-IN_SCOPE_STYLES = {"Emu_Community", "Emu_Custom", "GMD", "Third-Party"}
+RAW_IN_SCOPE_STYLES = {"Emu_Community", "Emu_Custom", "GMD", "Third-Party"}
 VERDICT_COMPLETE = {"success", "failure"}
 
 MAD_Z_THRESHOLD = 3.5
 TUKEY_K = 1.5
 EPS = 1e-9
+
+# Candidate fallback policy hook for the instrumentation-testing window.
+# Keep these as "pending" initially. After RQ1 validation, these can be
+# changed to:
+#   - direct_only
+#   - direct_or_validated_fallback
+#   - direct_only_unvalidated
+WINDOW_FALLBACK_POLICY = {
+    "Community": "pending_rq1_validation",
+    "Custom": "pending_rq1_validation",
+    "GMD": "pending_rq1_validation",
+    "Third-Party": "pending_rq1_validation",
+}
 
 # =========================
 # HELPERS
@@ -228,6 +243,24 @@ def simple_available_source(series: pd.Series, label: str) -> pd.Series:
     return pd.Series(np.where(s.notna(), label, "missing"), index=series.index, dtype="object")
 
 
+def canonicalize_study_style(x: object) -> str:
+    if pd.isna(x):
+        return ""
+    s = str(x).strip()
+    low = s.lower().replace("_", "-")
+    if low == "emu-community":
+        return "Community"
+    if low == "emu-custom":
+        return "Custom"
+    if low == "gmd":
+        return "GMD"
+    if low == "third-party":
+        return "Third-Party"
+    if low in {"real-device", "real-devices"}:
+        return "Real-Devices"
+    return s
+
+
 # =========================
 # MAIN
 # =========================
@@ -282,6 +315,9 @@ def main() -> None:
     ensure_alias(df, "style", ["execution_style", "provider_category", "style_label"])
     to_stripped_str(df, "style")
 
+    # Canonical study-facing style for later policy decisions
+    df["study_style"] = df["style"].map(canonicalize_study_style)
+
     ensure_alias(df, "run_conclusion", ["conclusion", "workflow_run_conclusion", "run_result"])
     to_stripped_str(df, "run_conclusion")
 
@@ -304,6 +340,10 @@ def main() -> None:
     ensure_alias(df, "core_instru_window_seconds", ["core_execution_window_seconds"])
     ensure_alias(df, "instru_exec_window_seconds", ["exec_window_seconds", "test_exec_window_seconds"])
 
+    # Candidate fallback window field(s)
+    ensure_alias(df, "instru_window_seconds", ["instrumentation_window_seconds", "telemetry_instru_window_seconds"])
+    ensure_alias(df, "instru_total_seconds", ["instrumentation_total_seconds"])
+
     # Direct bounds / refinement fields
     ensure_alias(df, "instru_started_at", ["instrumentation_started_at", "instr_started_at"])
     ensure_alias(df, "instru_ended_at", ["instrumentation_ended_at", "instr_ended_at"])
@@ -319,6 +359,8 @@ def main() -> None:
         "instru_duration_seconds",
         "core_instru_window_seconds",
         "instru_exec_window_seconds",
+        "instru_window_seconds",
+        "instru_total_seconds",
         "pre_test_overhead_seconds",
         "post_test_overhead_seconds",
         "instru_exec_sum_seconds",
@@ -379,13 +421,65 @@ def main() -> None:
         & pd.to_numeric(df["study_ttfts_fallback_compare_seconds"], errors="coerce").notna()
     )
 
-    # FULL instrumentation-path window (used in RQ2 Obs. 2.3 and top-level timeline decomposition)
-    df["study_instru_test_window_seconds"] = df["instru_duration_seconds"]
-    df["study_instru_test_window_source_final"] = direct_only_source(
-        df["study_instru_test_window_seconds"], "direct_instru_path_window"
+    # -------------------------------------------------
+    # INSTRUMENTATION-TEST WINDOW: POLICY-READY LAYERING
+    # -------------------------------------------------
+    # 1) Strict direct baseline
+    df["study_instru_test_window_direct_seconds"] = df["instru_duration_seconds"]
+    df["study_instru_test_window_direct_source_final"] = direct_only_source(
+        df["study_instru_test_window_direct_seconds"], "direct_instru_path_window"
     )
 
-    # Other = run - ttfts - FULL instrumentation-path window
+    # 2) Candidate fallback kept separate and neutral (no validation claim here)
+    if "instru_window_seconds" in df.columns:
+        df["study_instru_test_window_fallback_candidate_seconds"] = df["instru_window_seconds"]
+    else:
+        df["study_instru_test_window_fallback_candidate_seconds"] = np.nan
+
+    df["study_instru_test_window_fallback_candidate_source"] = simple_available_source(
+        df["study_instru_test_window_fallback_candidate_seconds"],
+        "telemetry_instru_window_candidate"
+    )
+
+    df["study_instru_test_window_fallback_candidate_name"] = np.where(
+        pd.to_numeric(df["study_instru_test_window_fallback_candidate_seconds"], errors="coerce").notna(),
+        "instru_window_seconds",
+        "missing",
+    )
+
+    # Optional secondary fallback candidate retained for auditing only
+    if "instru_total_seconds" in df.columns:
+        df["study_instru_test_window_fallback_alt_candidate_seconds"] = df["instru_total_seconds"]
+    else:
+        df["study_instru_test_window_fallback_alt_candidate_seconds"] = np.nan
+
+    # 3) Validation helper fields (analogous to TTFTS overlap fields)
+    df["study_instru_test_window_direct_for_validation_seconds"] = df["study_instru_test_window_direct_seconds"]
+    df["study_instru_test_window_fallback_compare_seconds"] = df["study_instru_test_window_fallback_candidate_seconds"]
+
+    df["study_instru_test_window_overlap_valid"] = (
+        pd.to_numeric(df["study_instru_test_window_direct_for_validation_seconds"], errors="coerce").notna()
+        & pd.to_numeric(df["study_instru_test_window_fallback_compare_seconds"], errors="coerce").notna()
+    )
+
+    # 4) Policy/provenance placeholders.
+    # These remain unresolved until RQ1 validates fallback use by style.
+    df["study_instru_test_window_resolution_policy"] = df["study_style"].map(
+        lambda s: WINDOW_FALLBACK_POLICY.get(s, "pending_rq1_validation")
+    )
+
+    df["study_instru_test_window_fallback_eligible"] = "unknown"
+
+    # 5) Resolved study-facing field defaults to direct-only for now.
+    # This preserves the current paper behavior while keeping policy-ready fields.
+    df["study_instru_test_window_seconds"] = df["study_instru_test_window_direct_seconds"]
+    df["study_instru_test_window_source_final"] = np.where(
+        pd.to_numeric(df["study_instru_test_window_direct_seconds"], errors="coerce").notna(),
+        "direct_instru_path_window",
+        "missing",
+    )
+
+    # Other = run - ttfts - RESOLVED instrumentation-testing window
     df["study_other_seconds"] = np.where(
         df["study_run_duration_seconds"].notna()
         & df["study_ttfts_seconds"].notna()
@@ -398,11 +492,11 @@ def main() -> None:
     df["study_other_seconds"] = clip_tiny_negative_to_zero(df["study_other_seconds"])
     df["study_other_source_final"] = np.where(
         pd.to_numeric(df["study_other_seconds"], errors="coerce").notna(),
-        "derived_from_run_ttfts_full_window",
+        "derived_from_run_ttfts_resolved_window",
         "missing",
     )
 
-    # RQ4 direct-only decomposition of the FULL instrumentation window
+    # RQ4 direct-only decomposition of the FULL direct instrumentation window
     df["study_pre_exec_seconds"] = (
         df["pre_test_overhead_seconds"] if "pre_test_overhead_seconds" in df.columns else np.nan
     )
@@ -423,7 +517,7 @@ def main() -> None:
         df["study_post_exec_seconds"], "direct_instru_path_window"
     )
 
-    # Decomposition check: full window should equal pre + exec + post
+    # Decomposition check: direct full window should equal pre + exec + post
     df["study_window_decomp_sum_seconds"] = np.where(
         pd.to_numeric(df["study_pre_exec_seconds"], errors="coerce").notna()
         | pd.to_numeric(df["study_exec_span_seconds"], errors="coerce").notna()
@@ -436,9 +530,9 @@ def main() -> None:
 
     # Optional decomposition residual for auditing
     df["study_window_decomp_diff_seconds"] = np.where(
-        pd.to_numeric(df["study_instru_test_window_seconds"], errors="coerce").notna()
+        pd.to_numeric(df["study_instru_test_window_direct_seconds"], errors="coerce").notna()
         & pd.to_numeric(df["study_window_decomp_sum_seconds"], errors="coerce").notna(),
-        pd.to_numeric(df["study_instru_test_window_seconds"], errors="coerce")
+        pd.to_numeric(df["study_instru_test_window_direct_seconds"], errors="coerce")
         - pd.to_numeric(df["study_window_decomp_sum_seconds"], errors="coerce"),
         np.nan,
     )
@@ -447,7 +541,7 @@ def main() -> None:
     # -------------------------------------------------
     # PAPER-ALIGNED CONTROLLER
     # -------------------------------------------------
-    is_in_scope_style = df["style"].isin(IN_SCOPE_STYLES)
+    is_in_scope_style = df["style"].isin(RAW_IN_SCOPE_STYLES)
     is_attempt1 = df["run_attempt"].astype("Int64").eq(1)
     instr_concl = df["instru_conclusion"].fillna("").astype(str).str.lower()
     is_verdict_complete = instr_concl.isin(VERDICT_COMPLETE)
@@ -493,7 +587,7 @@ def main() -> None:
     id_cols = [
         "full_name", "run_id", "workflow_id", "workflow_identifier", "workflow_path",
         "run_attempt", "event", "head_branch", "default_branch", "head_sha",
-        "style", "styles", "invocation_types", "third_party_provider_name",
+        "style", "study_style", "styles", "invocation_types", "third_party_provider_name",
         "instru_job_count"
     ]
 
@@ -510,8 +604,10 @@ def main() -> None:
         "queue_seconds",
         "run_duration_seconds",
         "ttfts_seconds",
-        "instru_duration_seconds",          # FULL instrumentation path window
-        "core_instru_window_seconds",       # CORE execution span only
+        "instru_duration_seconds",
+        "instru_window_seconds",
+        "instru_total_seconds",
+        "core_instru_window_seconds",
         "instru_exec_window_seconds",
     ]
 
@@ -552,8 +648,21 @@ def main() -> None:
         "study_ttfts_fallback_seconds",
         "study_ttfts_fallback_compare_seconds",
         "study_ttfts_overlap_valid",
+
+        "study_instru_test_window_direct_seconds",
+        "study_instru_test_window_direct_source_final",
+        "study_instru_test_window_fallback_candidate_seconds",
+        "study_instru_test_window_fallback_candidate_source",
+        "study_instru_test_window_fallback_candidate_name",
+        "study_instru_test_window_fallback_alt_candidate_seconds",
+        "study_instru_test_window_direct_for_validation_seconds",
+        "study_instru_test_window_fallback_compare_seconds",
+        "study_instru_test_window_overlap_valid",
+        "study_instru_test_window_resolution_policy",
+        "study_instru_test_window_fallback_eligible",
         "study_instru_test_window_seconds",
         "study_instru_test_window_source_final",
+
         "study_other_seconds",
         "study_other_source_final",
         "study_pre_exec_seconds",
@@ -598,7 +707,7 @@ def main() -> None:
     print(f"[done] wrote {OUT_TOTAL}")
     print(f"[info] rows kept after instru_job_count > 0 filter: {len(df_out)}")
     print(f"[info] unique runs kept after instru_job_count > 0 filter: {df_out[['full_name', 'run_id']].drop_duplicates().shape[0]}")
-    print(f"[info] four-style emulator rows: {df_out['style'].isin(IN_SCOPE_STYLES).sum()}")
+    print(f"[info] four-style emulator rows: {df_out['style'].isin(RAW_IN_SCOPE_STYLES).sum()}")
     print(f"[info] Base rows: {int(df_out['Base'].sum())}")
     print(f"[info] Robust rows: {int(df_out['Robust'].sum())}")
 
@@ -608,7 +717,12 @@ def main() -> None:
     print(f"[info] study_ttfts_direct_seconds available: {df_out['study_ttfts_direct_seconds'].notna().sum()}")
     print(f"[info] study_ttfts_fallback_seconds available: {df_out['study_ttfts_fallback_seconds'].notna().sum()}")
     print(f"[info] study_ttfts_overlap_valid count: {int(df_out['study_ttfts_overlap_valid'].sum())}")
-    print(f"[info] study_instru_test_window_seconds available: {df_out['study_instru_test_window_seconds'].notna().sum()}")
+
+    print(f"[info] study_instru_test_window_direct_seconds available: {df_out['study_instru_test_window_direct_seconds'].notna().sum()}")
+    print(f"[info] study_instru_test_window_fallback_candidate_seconds available: {df_out['study_instru_test_window_fallback_candidate_seconds'].notna().sum()}")
+    print(f"[info] study_instru_test_window_overlap_valid count: {int(df_out['study_instru_test_window_overlap_valid'].sum())}")
+    print(f"[info] study_instru_test_window_seconds available (resolved/default): {df_out['study_instru_test_window_seconds'].notna().sum()}")
+
     print(f"[info] study_other_seconds available: {df_out['study_other_seconds'].notna().sum()}")
     print(f"[info] study_pre_exec_seconds available: {df_out['study_pre_exec_seconds'].notna().sum()}")
     print(f"[info] study_exec_span_seconds available: {df_out['study_exec_span_seconds'].notna().sum()}")
