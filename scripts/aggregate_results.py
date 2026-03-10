@@ -95,6 +95,7 @@ def main() -> None:
         file_headers: List[List[str]] = []
         combined_rows: List[Dict[str, str]] = []
         contributing = 0
+        found_paths: List[str] = []
 
         for shard_dir in shard_dirs:
             matches = list(shard_dir.rglob(filename))
@@ -102,22 +103,26 @@ def main() -> None:
                 continue
 
             shard_file = matches[0]
+            found_paths.append(str(shard_file))
             headers, rows = read_csv(shard_file)
             file_headers.append(headers)
             combined_rows.extend(rows)
             contributing += 1
 
-        if not combined_rows:
+        # Important: write header-only merged files too
+        if not file_headers:
             continue
 
         merged_headers = ordered_union(file_headers)
         merged_rows = dedupe_rows(combined_rows, dedupe_keys)
+
         write_csv(output_dir / filename, merged_headers, merged_rows)
         manifest["merged_files"][filename] = {
             "input_shards": contributing,
             "rows_before_dedupe": len(combined_rows),
             "rows_after_dedupe": len(merged_rows),
             "dedupe_keys": dedupe_keys,
+            "found_paths": found_paths,
         }
 
     for shard_dir in shard_dirs:
