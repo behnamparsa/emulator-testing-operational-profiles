@@ -3,34 +3,21 @@
 build_total_dataset.py
 
 Build MainDataset.csv for the study by merging:
-- Stage 3A run×style dataset: run_per_style_v1_stage3.csv
-- Stage 4 signature dataset: run_workload_signature_v3.csv
+- Stage 3C run×style dataset: run_per_style_v1_stage3.csv
+- Stage 4 signature dataset
 
-This version explicitly materializes the study-facing timeline variables:
+This version materializes the study-facing timeline variables:
 - study_run_duration_seconds
 - study_queue_seconds
 - study_ttfts_seconds
-- study_instru_test_window_seconds              # RESOLVED study-facing field (policy-ready)
+- study_instru_test_window_seconds
 - study_other_seconds
 - study_pre_exec_seconds
 - study_exec_span_seconds
 - study_post_exec_seconds
 
-It also preserves provenance/source fields and adds policy-ready
-instrumentation-window layering so RQ1 can decide later, per style,
-whether a validated fallback is admissible:
-- study_instru_test_window_direct_seconds
-- study_instru_test_window_direct_source_final
-- study_instru_test_window_fallback_candidate_seconds
-- study_instru_test_window_fallback_candidate_source
-- study_instru_test_window_fallback_candidate_name
-- study_instru_test_window_direct_for_validation_seconds
-- study_instru_test_window_fallback_compare_seconds
-- study_instru_test_window_overlap_valid
-- study_instru_test_window_resolution_policy
-- study_instru_test_window_fallback_eligible
-- study_instru_test_window_seconds
-- study_instru_test_window_source_final
+It also preserves provenance/source fields and keeps policy-ready
+instrumentation-window layering for later RQ1 validation.
 
 MainDataset is explicitly filtered to Stage 3 executed instrumentation runs only:
   instru_job_count > 0
@@ -40,7 +27,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from config.runtime import get_root_dir
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -50,8 +37,12 @@ import pandas as pd
 # =========================
 ROOT_DIR = get_root_dir()
 
-IN_STAGE3A = ROOT_DIR / "run_per_style_v1_stage3.csv"
+IN_STAGE3C = ROOT_DIR / "run_per_style_v1_stage3.csv"
+
+# Keep your current Stage 4 name if that is what your project uses.
+# Change this to fingerprint_output_v5.csv only if that is your actual Stage 4 output.
 IN_STAGE4 = ROOT_DIR / "run_workload_signature_v3.csv"
+
 OUT_TOTAL = ROOT_DIR / "MainDataset.csv"
 
 SIG_COL_CANDIDATES: List[str] = [
@@ -60,19 +51,13 @@ SIG_COL_CANDIDATES: List[str] = [
     "sig_hash_base",
 ]
 
-RAW_IN_SCOPE_STYLES = {"Emu_Community", "Emu_Custom", "GMD", "Third-Party"}
-VERDICT_COMPLETE = {"success", "failure"}
+RAW_IN_SCOPE_STYLES = {"Community", "Custom", "GMD", "Third-Party"}
+TERMINAL_CONCLUSIONS = {"success", "failure"}
 
 MAD_Z_THRESHOLD = 3.5
 TUKEY_K = 1.5
 EPS = 1e-9
 
-# Candidate fallback policy hook for the instrumentation-testing window.
-# Keep these as "pending" initially. After RQ1 validation, these can be
-# changed to:
-#   - direct_only
-#   - direct_or_validated_fallback
-#   - direct_only_unvalidated
 WINDOW_FALLBACK_POLICY = {
     "Community": "pending_rq1_validation",
     "Custom": "pending_rq1_validation",
@@ -137,14 +122,6 @@ def clip_tiny_negative_to_zero(series: pd.Series, eps: float = EPS) -> pd.Series
 
 
 def canonicalize_ttfts_source_value(x: object) -> Optional[str]:
-    """
-    Map existing TTFTS provenance labels into compact study-facing provenance.
-    Final output labels:
-    - direct_step
-    - fallback_stage2
-    - unknown
-    - None (missing/empty before final cleanup)
-    """
     if pd.isna(x):
         return None
 
@@ -194,16 +171,6 @@ def canonicalize_ttfts_source_value(x: object) -> Optional[str]:
 
 
 def build_ttfts_source_final(df: pd.DataFrame) -> pd.Series:
-    """
-    Canonical TTFTS provenance aligned with the paper.
-
-    Priority:
-      1) explicit source columns if available (ttfts_source first, then modified_ttfts_source)
-      2) infer direct if first_test_step_started_at exists and final ttfts exists
-      3) infer fallback if no direct-step support but S2 fallback exists and final ttfts exists
-      4) missing if final ttfts missing
-      5) unknown otherwise
-    """
     out = pd.Series(index=df.index, dtype="object")
     explicit = pd.Series(index=df.index, dtype="object")
 
@@ -247,82 +214,149 @@ def canonicalize_study_style(x: object) -> str:
     if pd.isna(x):
         return ""
     s = str(x).strip()
-    low = s.lower().replace("_", "-")
-    if low == "emu-community":
-        return "Community"
-    if low == "emu-custom":
-        return "Custom"
-    if low == "gmd":
-        return "GMD"
-    if low == "third-party":
-        return "Third-Party"
-    if low in {"real-device", "real-devices"}:
-        return "Real-Devices"
-    return s
+    key = s.lower().replace("_", " ").replace("-", " ")
+    key = " ".join(key.split())
+
+    mapping = {
+        "emu community": "Community",
+        "community": "Community",
+        "emu custom": "Custom",
+        "custom": "Custom",
+        "gmd": "GMD",
+        "third party": "Third-Party",
+        "3p": "Third-Party",
+        "real device": "Real-Devices",
+        "real devices": "Real-Devices",
+    }
+    return mapping.get(key, s)
+
+
+def norm_str(x: object) -> str:
+    if pd.isna(x):
+        return ""
+    return str(x).strip()
+
+
+def make_style_key(df: pd.DataFrame) -> pd.Series:
+    repo = df["repo_full_name"].astype(str).str.strip()
+    run = df["workflow_run_id"].astype(str).str.strip()
+    attempt = df["attempt"].astype(str).str.strip()
+    style = df["style"].map(canonicalize_study_style)
+    return repo + "||" + run + "||" + attempt + "||" + style
 
 
 # =========================
 # MAIN
 # =========================
 def main() -> None:
-    stage3 = pd.read_csv(IN_STAGE3A, low_memory=False)
+    df = pd.read_csv(IN_STAGE3C, low_memory=False)
     stage4 = pd.read_csv(IN_STAGE4, low_memory=False)
 
-    # Normalize repo/run keys
-    for d in (stage3, stage4):
-        if "repo_full_name" in d.columns and "full_name" not in d.columns:
-            d.rename(columns={"repo_full_name": "full_name"}, inplace=True)
-        if "repository" in d.columns and "full_name" not in d.columns:
-            d.rename(columns={"repository": "full_name"}, inplace=True)
+    # -------------------------------------------------
+    # Harmonize V13-style keys
+    # -------------------------------------------------
+    # Stage 3C key aliases
+    ensure_alias(df, "repo_full_name", ["full_name", "repository"])
+    ensure_alias(df, "workflow_run_id", ["run_id"])
+    ensure_alias(df, "attempt", ["run_attempt", "run_attempt_number"])
 
-    for col in ["full_name", "run_id"]:
-        if col not in stage3.columns:
-            raise ValueError(f"Stage 3A missing required column: {col}")
+    # Stage 4 key aliases
+    ensure_alias(stage4, "repo_full_name", ["full_name", "repository"])
+    ensure_alias(stage4, "workflow_run_id", ["run_id"])
+    ensure_alias(stage4, "attempt", ["run_attempt", "run_attempt_number"])
+    ensure_alias(stage4, "style", ["execution_style", "provider_category", "style_label"])
+
+    required_stage3 = ["repo_full_name", "workflow_run_id", "attempt"]
+    for col in required_stage3:
+        if col not in df.columns:
+            raise ValueError(f"Stage 3C missing required column: {col}")
+
+    required_stage4 = ["repo_full_name", "workflow_run_id"]
+    for col in required_stage4:
         if col not in stage4.columns:
             raise ValueError(f"Stage 4 missing required column: {col}")
 
-    to_stripped_str(stage3, "full_name")
-    to_stripped_str(stage3, "run_id")
-    to_stripped_str(stage4, "full_name")
-    to_stripped_str(stage4, "run_id")
+    for d in (df, stage4):
+        for col in ["repo_full_name", "workflow_run_id", "attempt", "style"]:
+            if col in d.columns:
+                to_stripped_str(d, col)
 
+    to_int(df, "attempt")
+    if "attempt" in stage4.columns:
+        to_int(stage4, "attempt")
+
+    # -------------------------------------------------
     # Stage 3 executed instrumentation runs only
-    if "instru_job_count" not in stage3.columns:
-        raise ValueError("Stage 3A missing required column: instru_job_count")
-    stage3["instru_job_count"] = pd.to_numeric(stage3["instru_job_count"], errors="coerce").fillna(0)
-    stage3 = stage3.loc[stage3["instru_job_count"] > 0].copy()
+    # -------------------------------------------------
+    if "instru_job_count" not in df.columns:
+        raise ValueError("Stage 3C missing required column: instru_job_count")
+    df["instru_job_count"] = pd.to_numeric(df["instru_job_count"], errors="coerce").fillna(0)
+    df = df.loc[df["instru_job_count"] > 0].copy()
 
-    # Base signature only
+    # -------------------------------------------------
+    # Canonical style
+    # -------------------------------------------------
+    ensure_alias(df, "style", ["execution_style", "provider_category", "style_label"])
+    to_stripped_str(df, "style")
+    df["style"] = df["style"].map(canonicalize_study_style)
+    df["study_style"] = df["style"]
+
+    if "style" in stage4.columns:
+        stage4["style"] = stage4["style"].map(canonicalize_study_style)
+
+    # -------------------------------------------------
+    # Stage 4 signature merge
+    # Prefer style-level merge when Stage 4 has style; otherwise run-level merge
+    # -------------------------------------------------
     sig_col = pick_first_existing(stage4, SIG_COL_CANDIDATES)
     if sig_col is None:
         raise ValueError(f"Stage 4 must contain one of the BASE signature columns: {SIG_COL_CANDIDATES}")
     if sig_col != "signature_hash_base":
         stage4.rename(columns={sig_col: "signature_hash_base"}, inplace=True)
 
-    keep4 = ["full_name", "run_id", "signature_hash_base"]
+    keep4 = ["repo_full_name", "workflow_run_id", "signature_hash_base"]
+    if "attempt" in stage4.columns:
+        keep4.append("attempt")
+    if "style" in stage4.columns:
+        keep4.append("style")
+
     for extra in ["runner_os_bucket", "job_count_total_bucket", "step_count_total_bucket"]:
         if extra in stage4.columns:
             keep4.append(extra)
 
-    stage4_small = stage4[keep4].drop_duplicates(subset=["full_name", "run_id"])
-    df = stage3.merge(stage4_small, on=["full_name", "run_id"], how="left", validate="m:1")
+    stage4_small = stage4[keep4].copy()
 
-    # Harmonize names
+    if "style" in stage4_small.columns and "attempt" in stage4_small.columns:
+        df["_style_key"] = make_style_key(df)
+        stage4_small["_style_key"] = make_style_key(stage4_small)
+        stage4_small = stage4_small.drop_duplicates(subset=["_style_key"])
+        df = df.merge(
+            stage4_small.drop(columns=["repo_full_name", "workflow_run_id", "attempt", "style"], errors="ignore"),
+            on="_style_key",
+            how="left",
+            validate="m:1",
+        )
+    else:
+        merge4 = stage4_small.drop_duplicates(subset=["repo_full_name", "workflow_run_id"])
+        df = df.merge(
+            merge4,
+            on=["repo_full_name", "workflow_run_id"],
+            how="left",
+            validate="m:1",
+        )
+
+    # -------------------------------------------------
+    # Harmonize controller / metadata names
+    # -------------------------------------------------
     ensure_alias(df, "event", ["trigger", "event_name", "run_event", "github_event_name"])
     ensure_alias(df, "run_attempt", ["attempt", "run_attempt_number"])
     to_int(df, "run_attempt")
-
-    ensure_alias(df, "style", ["execution_style", "provider_category", "style_label"])
-    to_stripped_str(df, "style")
-
-    # Canonical study-facing style for later policy decisions
-    df["study_style"] = df["style"].map(canonicalize_study_style)
 
     ensure_alias(df, "run_conclusion", ["conclusion", "workflow_run_conclusion", "run_result"])
     to_stripped_str(df, "run_conclusion")
 
     if "instru_conclusion" not in df.columns:
-        raise ValueError("Stage 3A must contain instru_conclusion.")
+        raise ValueError("Stage 3C must contain instru_conclusion.")
     to_stripped_str(df, "instru_conclusion")
 
     ensure_alias(df, "created_at", ["run_created_at", "workflow_created_at"])
@@ -330,12 +364,12 @@ def main() -> None:
     ensure_alias(df, "run_duration_seconds", ["duration_seconds"])
     ensure_alias(df, "queue_seconds", ["queue_duration_seconds"])
 
-    # Canonical TTFTS field for the study
+    # TTFTS
     ensure_alias(df, "ttfts_seconds", ["ttfts_seconds_modified"])
 
     # IMPORTANT:
-    # - instru_duration_seconds = FULL instrumentation-path window (t_ie - t_is)
-    # - core_instru_window_seconds / instru_exec_window_seconds = CORE execution span only (t_xe - t_xs)
+    # - instru_duration_seconds = FULL instrumentation-path window
+    # - core_instru_window_seconds / instru_exec_window_seconds = CORE execution span only
     ensure_alias(df, "instru_duration_seconds", ["instrumentation_duration_seconds"])
     ensure_alias(df, "core_instru_window_seconds", ["core_execution_window_seconds"])
     ensure_alias(df, "instru_exec_window_seconds", ["exec_window_seconds", "test_exec_window_seconds"])
@@ -372,7 +406,6 @@ def main() -> None:
     ]:
         to_num(df, c)
 
-    # If only one execution-span field exists, keep them synchronized
     if "core_instru_window_seconds" in df.columns and "instru_exec_window_seconds" in df.columns:
         fill_a = df["core_instru_window_seconds"].isna() & df["instru_exec_window_seconds"].notna()
         df.loc[fill_a, "core_instru_window_seconds"] = df.loc[fill_a, "instru_exec_window_seconds"]
@@ -383,7 +416,6 @@ def main() -> None:
     # -------------------------------------------------
     # STUDY-FACING CANONICAL VARIABLES
     # -------------------------------------------------
-    # Core timing variables
     df["study_run_duration_seconds"] = df["run_duration_seconds"]
     df["study_run_duration_source_final"] = simple_available_source(
         df["study_run_duration_seconds"], "run_metadata_duration"
@@ -394,11 +426,9 @@ def main() -> None:
         df["study_queue_seconds"], "trigger_to_run_start"
     )
 
-    # Final harmonized TTFTS + provenance
     df["study_ttfts_seconds"] = df["ttfts_seconds"]
     df["study_ttfts_source_final"] = build_ttfts_source_final(df)
 
-    # Direct/fallback slices of the FINAL TTFTS value
     df["study_ttfts_direct_seconds"] = np.where(
         df["study_ttfts_source_final"].eq("direct_step"),
         df["study_ttfts_seconds"],
@@ -411,7 +441,6 @@ def main() -> None:
         np.nan,
     )
 
-    # Raw fallback comparator for overlap validation only
     df["study_ttfts_fallback_compare_seconds"] = (
         df["S2_time_to_first_instru_seconds"] if "S2_time_to_first_instru_seconds" in df.columns else np.nan
     )
@@ -422,15 +451,13 @@ def main() -> None:
     )
 
     # -------------------------------------------------
-    # INSTRUMENTATION-TEST WINDOW: POLICY-READY LAYERING
+    # INSTRUMENTATION-TEST WINDOW
     # -------------------------------------------------
-    # 1) Strict direct baseline
     df["study_instru_test_window_direct_seconds"] = df["instru_duration_seconds"]
     df["study_instru_test_window_direct_source_final"] = direct_only_source(
         df["study_instru_test_window_direct_seconds"], "direct_instru_path_window"
     )
 
-    # 2) Candidate fallback kept separate and neutral (no validation claim here)
     if "instru_window_seconds" in df.columns:
         df["study_instru_test_window_fallback_candidate_seconds"] = df["instru_window_seconds"]
     else:
@@ -447,13 +474,11 @@ def main() -> None:
         "missing",
     )
 
-    # Optional secondary fallback candidate retained for auditing only
     if "instru_total_seconds" in df.columns:
         df["study_instru_test_window_fallback_alt_candidate_seconds"] = df["instru_total_seconds"]
     else:
         df["study_instru_test_window_fallback_alt_candidate_seconds"] = np.nan
 
-    # 3) Validation helper fields (analogous to TTFTS overlap fields)
     df["study_instru_test_window_direct_for_validation_seconds"] = df["study_instru_test_window_direct_seconds"]
     df["study_instru_test_window_fallback_compare_seconds"] = df["study_instru_test_window_fallback_candidate_seconds"]
 
@@ -462,16 +487,13 @@ def main() -> None:
         & pd.to_numeric(df["study_instru_test_window_fallback_compare_seconds"], errors="coerce").notna()
     )
 
-    # 4) Policy/provenance placeholders.
-    # These remain unresolved until RQ1 validates fallback use by style.
     df["study_instru_test_window_resolution_policy"] = df["study_style"].map(
         lambda s: WINDOW_FALLBACK_POLICY.get(s, "pending_rq1_validation")
     )
 
     df["study_instru_test_window_fallback_eligible"] = "unknown"
 
-    # 5) Resolved study-facing field defaults to direct-only for now.
-    # This preserves the current paper behavior while keeping policy-ready fields.
+    # Direct-only for now
     df["study_instru_test_window_seconds"] = df["study_instru_test_window_direct_seconds"]
     df["study_instru_test_window_source_final"] = np.where(
         pd.to_numeric(df["study_instru_test_window_direct_seconds"], errors="coerce").notna(),
@@ -479,7 +501,6 @@ def main() -> None:
         "missing",
     )
 
-    # Other = run - ttfts - RESOLVED instrumentation-testing window
     df["study_other_seconds"] = np.where(
         df["study_run_duration_seconds"].notna()
         & df["study_ttfts_seconds"].notna()
@@ -496,7 +517,6 @@ def main() -> None:
         "missing",
     )
 
-    # RQ4 direct-only decomposition of the FULL direct instrumentation window
     df["study_pre_exec_seconds"] = (
         df["pre_test_overhead_seconds"] if "pre_test_overhead_seconds" in df.columns else np.nan
     )
@@ -517,7 +537,6 @@ def main() -> None:
         df["study_post_exec_seconds"], "direct_instru_path_window"
     )
 
-    # Decomposition check: direct full window should equal pre + exec + post
     df["study_window_decomp_sum_seconds"] = np.where(
         pd.to_numeric(df["study_pre_exec_seconds"], errors="coerce").notna()
         | pd.to_numeric(df["study_exec_span_seconds"], errors="coerce").notna()
@@ -528,7 +547,6 @@ def main() -> None:
         np.nan,
     )
 
-    # Optional decomposition residual for auditing
     df["study_window_decomp_diff_seconds"] = np.where(
         pd.to_numeric(df["study_instru_test_window_direct_seconds"], errors="coerce").notna()
         & pd.to_numeric(df["study_window_decomp_sum_seconds"], errors="coerce").notna(),
@@ -540,25 +558,30 @@ def main() -> None:
 
     # -------------------------------------------------
     # PAPER-ALIGNED CONTROLLER
+    # Base = in-scope style + attempt1 + terminal run conclusion + terminal instru conclusion
     # -------------------------------------------------
     is_in_scope_style = df["style"].isin(RAW_IN_SCOPE_STYLES)
     is_attempt1 = df["run_attempt"].astype("Int64").eq(1)
-    instr_concl = df["instru_conclusion"].fillna("").astype(str).str.lower()
-    is_verdict_complete = instr_concl.isin(VERDICT_COMPLETE)
 
-    df["Base"] = is_in_scope_style & is_attempt1 & is_verdict_complete
+    run_concl = df["run_conclusion"].fillna("").astype(str).str.lower()
+    instr_concl = df["instru_conclusion"].fillna("").astype(str).str.lower()
+
+    is_run_terminal = run_concl.isin(TERMINAL_CONCLUSIONS)
+    is_instru_terminal = instr_concl.isin(TERMINAL_CONCLUSIONS)
+
+    df["Base"] = is_in_scope_style & is_attempt1 & is_run_terminal & is_instru_terminal
 
     # -------------------------------------------------
-    # ROBUST FLAG
+    # ROBUST FLAG (diagnostic only)
     # -------------------------------------------------
     base_runs = (
-        df.loc[df["Base"] & df["signature_hash_base"].notna(), ["signature_hash_base", "full_name", "run_id"]]
+        df.loc[df["Base"] & df["signature_hash_base"].notna(), ["signature_hash_base", "repo_full_name", "workflow_run_id"]]
         .drop_duplicates()
         .copy()
     )
 
-    sig_n_runs = base_runs.groupby("signature_hash_base")["run_id"].nunique().rename("n_runs")
-    sig_n_repos = base_runs.groupby("signature_hash_base")["full_name"].nunique().rename("n_repos")
+    sig_n_runs = base_runs.groupby("signature_hash_base")["workflow_run_id"].nunique().rename("n_runs")
+    sig_n_repos = base_runs.groupby("signature_hash_base")["repo_full_name"].nunique().rename("n_repos")
 
     sig_stats = pd.concat([sig_n_runs, sig_n_repos], axis=1).reset_index()
     sig_stats["runs_per_repo"] = sig_stats["n_runs"] / sig_stats["n_repos"].replace(0, np.nan)
@@ -585,7 +608,7 @@ def main() -> None:
     # OUTPUT ORDERING
     # -------------------------------------------------
     id_cols = [
-        "full_name", "run_id", "workflow_id", "workflow_identifier", "workflow_path",
+        "repo_full_name", "workflow_id", "workflow_name", "workflow_run_id", "attempt",
         "run_attempt", "event", "head_branch", "default_branch", "head_sha",
         "style", "study_style", "styles", "invocation_types", "third_party_provider_name",
         "instru_job_count"
@@ -699,14 +722,20 @@ def main() -> None:
 
     df_out = df[front_cols + remaining_cols + tail_study_cols].copy()
 
+    if "_style_key" in df_out.columns:
+        df_out.drop(columns=["_style_key"], inplace=True, errors="ignore")
+
     # -------------------------------------------------
     # OUTPUT
     # -------------------------------------------------
-    df_out.to_csv(OUT_TOTAL, index=False, encoding="utf-8")
+    df_out.to_csv(OUT_TOTAL, index=False, encoding="utf-8-sig")
 
     print(f"[done] wrote {OUT_TOTAL}")
     print(f"[info] rows kept after instru_job_count > 0 filter: {len(df_out)}")
-    print(f"[info] unique runs kept after instru_job_count > 0 filter: {df_out[['full_name', 'run_id']].drop_duplicates().shape[0]}")
+    print(
+        f"[info] unique runs kept after instru_job_count > 0 filter: "
+        f"{df_out[['repo_full_name', 'workflow_run_id']].drop_duplicates().shape[0]}"
+    )
     print(f"[info] four-style emulator rows: {df_out['style'].isin(RAW_IN_SCOPE_STYLES).sum()}")
     print(f"[info] Base rows: {int(df_out['Base'].sum())}")
     print(f"[info] Robust rows: {int(df_out['Robust'].sum())}")
