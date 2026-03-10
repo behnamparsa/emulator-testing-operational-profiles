@@ -38,18 +38,18 @@ jobs:
           name: shard-definitions
           path: shard-definitions
 
-      - name: Prepare shard workdir
+      - name: Prepare shard processed folder
         run: |
-          mkdir -p workdir
-          cp "shard-definitions/${{ inputs.shard_file }}" workdir/URL_List.csv
+          mkdir -p "data/processed/shards/${{ inputs.shard_id }}"
+          cp "shard-definitions/${{ inputs.shard_file }}" "data/processed/shards/${{ inputs.shard_id }}/URL_List.csv"
           echo "Shard: ${{ inputs.shard_id }}"
-          wc -l workdir/URL_List.csv || true
+          wc -l "data/processed/shards/${{ inputs.shard_id }}/URL_List.csv" || true
 
       - name: Run Stage 1
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ github.token }}
-          ROOT_DIR: ${{ github.workspace }}/workdir
+          ROOT_DIR: ${{ github.workspace }}/data/processed/shards/${{ inputs.shard_id }}
         run: |
           python -m pipeline.stage1_verified_workflows
 
@@ -57,7 +57,7 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ github.token }}
-          ROOT_DIR: ${{ github.workspace }}/workdir
+          ROOT_DIR: ${{ github.workspace }}/data/processed/shards/${{ inputs.shard_id }}
         run: |
           python -m pipeline.stage2_run_inventory
 
@@ -65,7 +65,7 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ github.token }}
-          ROOT_DIR: ${{ github.workspace }}/workdir
+          ROOT_DIR: ${{ github.workspace }}/data/processed/shards/${{ inputs.shard_id }}
         run: |
           python -m pipeline.stage3_run_telemetry
 
@@ -73,13 +73,13 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ github.token }}
-          ROOT_DIR: ${{ github.workspace }}/workdir
+          ROOT_DIR: ${{ github.workspace }}/data/processed/shards/${{ inputs.shard_id }}
         run: |
           python -m pipeline.stage4_workload_signature
 
       - name: Save shard manifest
         run: |
-          cat > workdir/manifest.json <<EOF
+          cat > "data/processed/shards/${{ inputs.shard_id }}/manifest.json" <<EOF
           {
             "shard_id": "${{ inputs.shard_id }}",
             "shard_file": "${{ inputs.shard_file }}",
@@ -92,10 +92,10 @@ jobs:
         with:
           name: shard-${{ inputs.shard_id }}
           path: |
-            workdir/verified_workflows_v16.csv
-            workdir/run_inventory.csv
-            workdir/run_metrics_v16_stage3_enhanced.csv
-            workdir/run_steps_v16_stage3_breakdown.csv
-            workdir/run_per_style_v1_stage3.csv
-            workdir/run_workload_signature_v3.csv
-            workdir/manifest.json
+            data/processed/shards/${{ inputs.shard_id }}/verified_workflows_v16.csv
+            data/processed/shards/${{ inputs.shard_id }}/run_inventory.csv
+            data/processed/shards/${{ inputs.shard_id }}/run_metrics_v16_stage3_enhanced.csv
+            data/processed/shards/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv
+            data/processed/shards/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv
+            data/processed/shards/${{ inputs.shard_id }}/run_workload_signature_v3.csv
+            data/processed/shards/${{ inputs.shard_id }}/manifest.json

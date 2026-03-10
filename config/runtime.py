@@ -8,6 +8,7 @@ def get_repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+# config/runtime.py
 def get_root_dir() -> Path:
     value = os.getenv("ROOT_DIR")
     if value:

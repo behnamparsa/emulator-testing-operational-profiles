@@ -25,27 +25,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Prepare processed folder
+        run: |
+          mkdir -p data/processed
+
       - name: Validate Stage 1 output exists
         run: |
-          test -f data/study_exports/verified_workflows_v16.csv
-
-      - name: Prepare workdir + copy Stage 1 output
-        run: |
-          mkdir -p workdir
-          cp data/study_exports/verified_workflows_v16.csv workdir/verified_workflows_v16.csv
+          test -f data/processed/verified_workflows_v16.csv
 
       - name: Run Stage 2 (run inventory)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ github.token }}
-          ROOT_DIR: ${{ github.workspace }}/workdir
+          ROOT_DIR: ${{ github.workspace }}/data/processed
         run: |
           python -m pipeline.stage2_run_inventory
 
-      - name: Persist Stage 2 output into repo
+      - name: Validate Stage 2 output exists
         run: |
-          mkdir -p data/study_exports
-          cp workdir/run_inventory.csv data/study_exports/run_inventory.csv
+          test -f data/processed/run_inventory.csv
 
       - name: Commit Stage 2 output
         env:
@@ -53,7 +51,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/study_exports/run_inventory.csv
+          git add data/processed/run_inventory.csv
           git diff --cached --quiet || git commit -m "Stage 2: run_inventory.csv"
           git push
 
@@ -61,4 +59,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: stage2_run_inventory
-          path: data/study_exports/run_inventory.csv
+          path: data/processed/run_inventory.csv

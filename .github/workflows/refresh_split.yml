@@ -27,24 +27,31 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Prepare workdir + copy URL list
+      - name: Prepare processed folder
         run: |
-          mkdir -p workdir
-          cp data/processed/URL_List.csv workdir/URL_List.csv
+          mkdir -p data/processed
+
+      - name: Validate URL list exists
+        run: |
+          test -f data/processed/URL_List.csv
 
       - name: Run Stage 1 (verified workflows)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ github.token }}
-          ROOT_DIR: ${{ github.workspace }}/workdir
+          ROOT_DIR: ${{ github.workspace }}/data/processed
         run: |
           python -m pipeline.stage1_verified_workflows
+
+      - name: Validate Stage 1 output exists
+        run: |
+          test -f data/processed/verified_workflows_v16.csv
 
       - name: Upload Stage 1 outputs
         uses: actions/upload-artifact@v4
         with:
           name: stage1
-          path: workdir/verified_workflows_v16.csv
+          path: data/processed/verified_workflows_v16.csv
 
   stage2:
     runs-on: ubuntu-latest
@@ -64,29 +71,37 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Prepare workdir
+      - name: Prepare processed folder
         run: |
-          mkdir -p workdir
+          mkdir -p data/processed
 
       - name: Download Stage 1 outputs
         uses: actions/download-artifact@v4
         with:
           name: stage1
-          path: workdir
+          path: data/processed
+
+      - name: Validate Stage 1 output exists
+        run: |
+          test -f data/processed/verified_workflows_v16.csv
 
       - name: Run Stage 2 (run inventory)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ github.token }}
-          ROOT_DIR: ${{ github.workspace }}/workdir
+          ROOT_DIR: ${{ github.workspace }}/data/processed
         run: |
           python -m pipeline.stage2_run_inventory
+
+      - name: Validate Stage 2 output exists
+        run: |
+          test -f data/processed/run_inventory.csv
 
       - name: Upload Stage 2 outputs
         uses: actions/upload-artifact@v4
         with:
           name: stage2
-          path: workdir/run_inventory.csv
+          path: data/processed/run_inventory.csv
 
   stage3:
     runs-on: ubuntu-latest
@@ -106,32 +121,42 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Prepare workdir
+      - name: Prepare processed folder
         run: |
-          mkdir -p workdir
+          mkdir -p data/processed
 
       - name: Download Stage 2 outputs
         uses: actions/download-artifact@v4
         with:
           name: stage2
-          path: workdir
+          path: data/processed
+
+      - name: Validate Stage 2 output exists
+        run: |
+          test -f data/processed/run_inventory.csv
 
       - name: Run Stage 3 (telemetry + per-style)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ github.token }}
-          ROOT_DIR: ${{ github.workspace }}/workdir
+          ROOT_DIR: ${{ github.workspace }}/data/processed
         run: |
           python -m pipeline.stage3_run_telemetry
+
+      - name: Validate Stage 3 outputs exist
+        run: |
+          test -f data/processed/run_metrics_v16_stage3_enhanced.csv
+          test -f data/processed/run_steps_v16_stage3_breakdown.csv
+          test -f data/processed/run_per_style_v1_stage3.csv
 
       - name: Upload Stage 3 outputs
         uses: actions/upload-artifact@v4
         with:
           name: stage3
           path: |
-            workdir/run_metrics_v16_stage3_enhanced.csv
-            workdir/run_steps_v16_stage3_breakdown.csv
-            workdir/run_per_style_v1_stage3.csv
+            data/processed/run_metrics_v16_stage3_enhanced.csv
+            data/processed/run_steps_v16_stage3_breakdown.csv
+            data/processed/run_per_style_v1_stage3.csv
 
   stage4_build:
     runs-on: ubuntu-latest
@@ -151,51 +176,51 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Prepare workdir
+      - name: Prepare processed folder
         run: |
-          mkdir -p workdir
+          mkdir -p data/processed
 
       - name: Download Stage 3 outputs
         uses: actions/download-artifact@v4
         with:
           name: stage3
-          path: workdir
+          path: data/processed
+
+      - name: Validate Stage 3 outputs exist
+        run: |
+          test -f data/processed/run_metrics_v16_stage3_enhanced.csv
+          test -f data/processed/run_steps_v16_stage3_breakdown.csv
+          test -f data/processed/run_per_style_v1_stage3.csv
 
       - name: Run Stage 4 + build dataset
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ github.token }}
-          ROOT_DIR: ${{ github.workspace }}/workdir
+          ROOT_DIR: ${{ github.workspace }}/data/processed
         run: |
           python -m pipeline.stage4_workload_signature
           python -m pipeline.build_total_dataset
 
-      # Persist ALL study CSVs into repo
-      - name: Persist study CSVs into repo
+      - name: Validate final outputs exist
         run: |
-          mkdir -p data/processed
-          mkdir -p data/study_exports
+          test -f data/processed/run_workload_signature_v3.csv
+          test -f data/processed/MainDataset.csv
 
-          # Final dataset used by analysis
-          cp workdir/MainDataset.csv data/processed/MainDataset.csv
-          cp workdir/MainDataset.csv data/study_exports/MainDataset.csv
-
-          # Stage outputs (study artifacts)
-          cp workdir/verified_workflows_v16.csv data/study_exports/verified_workflows_v16.csv || true
-          cp workdir/run_inventory.csv data/study_exports/run_inventory.csv || true
-
-          cp workdir/run_metrics_v16_stage3_enhanced.csv data/study_exports/run_metrics_v16_stage3_enhanced.csv || true
-          cp workdir/run_steps_v16_stage3_breakdown.csv data/study_exports/run_steps_v16_stage3_breakdown.csv || true
-          cp workdir/run_per_style_v1_stage3.csv data/study_exports/run_per_style_v1_stage3.csv || true
-
-      - name: Commit updated dataset + study exports
+      - name: Commit updated processed outputs
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/processed/MainDataset.csv data/study_exports
-          git diff --cached --quiet || git commit -m "Update dataset + study CSV exports"
+          git add \
+            data/processed/verified_workflows_v16.csv \
+            data/processed/run_inventory.csv \
+            data/processed/run_metrics_v16_stage3_enhanced.csv \
+            data/processed/run_steps_v16_stage3_breakdown.csv \
+            data/processed/run_per_style_v1_stage3.csv \
+            data/processed/run_workload_signature_v3.csv \
+            data/processed/MainDataset.csv
+          git diff --cached --quiet || git commit -m "Update processed pipeline outputs"
           git push
 
       - name: Upload dataset artifact bundle
@@ -203,10 +228,10 @@ jobs:
         with:
           name: all_csv
           path: |
+            data/processed/verified_workflows_v16.csv
+            data/processed/run_inventory.csv
+            data/processed/run_metrics_v16_stage3_enhanced.csv
+            data/processed/run_steps_v16_stage3_breakdown.csv
+            data/processed/run_per_style_v1_stage3.csv
+            data/processed/run_workload_signature_v3.csv
             data/processed/MainDataset.csv
-            data/study_exports/verified_workflows_v16.csv
-            data/study_exports/run_inventory.csv
-            data/study_exports/run_metrics_v16_stage3_enhanced.csv
-            data/study_exports/run_steps_v16_stage3_breakdown.csv
-            data/study_exports/run_per_style_v1_stage3.csv
-            data/study_exports/MainDataset.csv

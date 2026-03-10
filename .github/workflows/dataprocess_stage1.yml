@@ -27,27 +27,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Prepare processed folder
+        run: |
+          mkdir -p data/processed
+
       - name: Validate URL list exists
         run: |
           test -f data/processed/URL_List.csv
-
-      - name: Prepare workdir + copy URL list
-        run: |
-          mkdir -p workdir
-          cp data/processed/URL_List.csv workdir/URL_List.csv
 
       - name: Run Stage 1 (verified workflows)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ github.token }}
-          ROOT_DIR: ${{ github.workspace }}/workdir
+          ROOT_DIR: ${{ github.workspace }}/data/processed
         run: |
           python -m pipeline.stage1_verified_workflows
 
-      - name: Persist Stage 1 output into repo
+      - name: Validate Stage 1 output exists
         run: |
-          mkdir -p data/study_exports
-          cp workdir/verified_workflows_v16.csv data/study_exports/verified_workflows_v16.csv
+          test -f data/processed/verified_workflows_v16.csv
 
       - name: Commit Stage 1 output
         env:
@@ -55,7 +53,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/study_exports/verified_workflows_v16.csv
+          git add data/processed/verified_workflows_v16.csv
           git diff --cached --quiet || git commit -m "Stage 1: verified_workflows_v16.csv"
           git push
 
@@ -63,4 +61,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: stage1_verified_workflows
-          path: data/study_exports/verified_workflows_v16.csv
+          path: data/processed/verified_workflows_v16.csv

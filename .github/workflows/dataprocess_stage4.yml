@@ -25,42 +25,29 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Validate Stage 3 inputs exist (signature inputs)
+      - name: Prepare processed folder
         run: |
-          test -f data/study_exports/run_metrics_v16_stage3_enhanced.csv
-          test -f data/study_exports/run_steps_v16_stage3_breakdown.csv
+          mkdir -p data/processed
 
-      - name: Prepare workdir + copy Stage 3 inputs
+      - name: Validate Stage 3 inputs exist
         run: |
-          mkdir -p workdir
-          cp data/study_exports/run_metrics_v16_stage3_enhanced.csv workdir/run_metrics_v16_stage3_enhanced.csv
-          cp data/study_exports/run_steps_v16_stage3_breakdown.csv workdir/run_steps_v16_stage3_breakdown.csv
+          test -f data/processed/run_metrics_v16_stage3_enhanced.csv
+          test -f data/processed/run_steps_v16_stage3_breakdown.csv
 
-      - name: Run Stage 4 (signature only)
+      - name: Run Stage 4
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ github.token }}
-          ROOT_DIR: ${{ github.workspace }}/workdir
+          ROOT_DIR: ${{ github.workspace }}/data/processed
         run: |
           python -m pipeline.stage4_workload_signature
 
-      - name: Persist signature CSV into repo (study_exports)
-        run: |
-          mkdir -p data/study_exports
-          cp workdir/run_workload_signature_v3.csv data/study_exports/run_workload_signature_v3.csv
-
-      - name: Commit Stage 4 output (signature)
+      - name: Commit Stage 4 output
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/study_exports/run_workload_signature_v3.csv
+          git add data/processed/run_workload_signature_v3.csv
           git diff --cached --quiet || git commit -m "Stage 4: run_workload_signature_v3.csv"
           git push
-
-      - name: Upload signature artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: stage4_signature
-          path: data/study_exports/run_workload_signature_v3.csv
