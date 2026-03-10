@@ -112,6 +112,14 @@ jobs:
             --input-dir downloaded_artifacts \
             --output-dir data/processed
 
+      - name: Debug aggregated outputs
+        run: |
+          echo "=== data/processed ==="
+          find data/processed -maxdepth 2 -type f | sort || true
+          echo "=== aggregate manifest ==="
+          cat data/processed/aggregate_manifest.json || true
+
+
       - name: Validate aggregated outputs exist
         run: |
           test -f data/processed/verified_workflows_v16.csv
