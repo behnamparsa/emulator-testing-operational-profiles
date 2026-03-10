@@ -50,7 +50,7 @@ def dedupe_rows(rows: List[Dict[str, str]], dedupe_keys: List[str]) -> List[Dict
     if not rows or not dedupe_keys:
         return rows
 
-    if not all(k in rows[0] or any(k in r for r in rows) for k in dedupe_keys):
+    if not all(any(k in r for r in rows) for k in dedupe_keys):
         return rows
 
     out: List[Dict[str, str]] = []
@@ -97,9 +97,11 @@ def main() -> None:
         contributing = 0
 
         for shard_dir in shard_dirs:
-            shard_file = shard_dir / filename
-            if not shard_file.exists():
+            matches = list(shard_dir.rglob(filename))
+            if not matches:
                 continue
+
+            shard_file = matches[0]
             headers, rows = read_csv(shard_file)
             file_headers.append(headers)
             combined_rows.extend(rows)
@@ -119,8 +121,9 @@ def main() -> None:
         }
 
     for shard_dir in shard_dirs:
-        shard_manifest = shard_dir / "manifest.json"
-        if shard_manifest.exists():
+        shard_manifest_matches = list(shard_dir.rglob("manifest.json"))
+        if shard_manifest_matches:
+            shard_manifest = shard_manifest_matches[0]
             try:
                 manifest["shards"].append(json.loads(shard_manifest.read_text(encoding="utf-8")))
             except Exception:
@@ -130,7 +133,6 @@ def main() -> None:
 
     (output_dir / "aggregate_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-    # convenience mirror directory for inspection
     merged_dir = output_dir / "merged_snapshot"
     merged_dir.mkdir(exist_ok=True)
     for filename in CSV_DEFS:
