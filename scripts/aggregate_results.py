@@ -9,12 +9,12 @@ from typing import Dict, List, Tuple, Iterable
 
 
 CSV_DEFS = {
-    "verified_workflows_v16.csv": ["full_name", "workflow_id", "workflow_path"],
-    "run_inventory.csv": ["run_id"],
-    "run_metrics_v16_stage3_enhanced.csv": ["run_id"],
-    "run_steps_v16_stage3_breakdown.csv": ["run_id", "job_name", "step_number", "step_name"],
-    "run_per_style_v1_stage3.csv": ["run_id", "declared_style"],
-    "run_workload_signature_v3.csv": ["run_id"],
+    "verified_workflows_v16.csv": ["repo_full_name", "workflow_id", "workflow_path"],
+    "run_inventory.csv": ["repo_full_name", "workflow_run_id", "attempt"],
+    "run_metrics_v16_stage3_enhanced.csv": ["repo_full_name", "workflow_run_id", "attempt"],
+    "run_steps_v16_stage3_breakdown.csv": ["repo_full_name", "workflow_run_id", "attempt", "job_name", "step_number", "step_name"],
+    "run_per_style_v1_stage3.csv": ["repo_full_name", "workflow_run_id", "attempt", "style"],
+    "run_workload_signature_v3.csv": ["repo_full_name", "workflow_run_id", "attempt", "style"],
 }
 
 
