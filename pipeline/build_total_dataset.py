@@ -4,7 +4,7 @@ build_total_dataset.py
 
 Build MainDataset.csv for the study by merging:
 - Stage 3C run×style dataset: run_per_style_v1_stage3.csv
-- Stage 4 signature dataset
+- Stage 4 signature dataset: run_workload_signature_v3.csv
 
 This version materializes the study-facing timeline variables:
 - study_run_duration_seconds
@@ -26,11 +26,12 @@ MainDataset is explicitly filtered to Stage 3 executed instrumentation runs only
 from __future__ import annotations
 
 from pathlib import Path
-from config.runtime import get_root_dir
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Set
 
 import numpy as np
 import pandas as pd
+
+from config.runtime import get_root_dir
 
 # =========================
 # CONFIG
@@ -38,11 +39,7 @@ import pandas as pd
 ROOT_DIR = get_root_dir()
 
 IN_STAGE3C = ROOT_DIR / "run_per_style_v1_stage3.csv"
-
-# Keep your current Stage 4 name if that is what your project uses.
-# Change this to fingerprint_output_v5.csv only if that is your actual Stage 4 output.
 IN_STAGE4 = ROOT_DIR / "run_workload_signature_v3.csv"
-
 OUT_TOTAL = ROOT_DIR / "MainDataset.csv"
 
 SIG_COL_CANDIDATES: List[str] = [
@@ -227,14 +224,9 @@ def canonicalize_study_style(x: object) -> str:
         "3p": "Third-Party",
         "real device": "Real-Devices",
         "real devices": "Real-Devices",
+        "real devices": "Real-Devices",
     }
     return mapping.get(key, s)
-
-
-def norm_str(x: object) -> str:
-    if pd.isna(x):
-        return ""
-    return str(x).strip()
 
 
 def make_style_key(df: pd.DataFrame) -> pd.Series:
@@ -255,12 +247,10 @@ def main() -> None:
     # -------------------------------------------------
     # Harmonize V13-style keys
     # -------------------------------------------------
-    # Stage 3C key aliases
     ensure_alias(df, "repo_full_name", ["full_name", "repository"])
     ensure_alias(df, "workflow_run_id", ["run_id"])
     ensure_alias(df, "attempt", ["run_attempt", "run_attempt_number"])
 
-    # Stage 4 key aliases
     ensure_alias(stage4, "repo_full_name", ["full_name", "repository"])
     ensure_alias(stage4, "workflow_run_id", ["run_id"])
     ensure_alias(stage4, "attempt", ["run_attempt", "run_attempt_number"])
@@ -364,7 +354,6 @@ def main() -> None:
     ensure_alias(df, "run_duration_seconds", ["duration_seconds"])
     ensure_alias(df, "queue_seconds", ["queue_duration_seconds"])
 
-    # TTFTS
     ensure_alias(df, "ttfts_seconds", ["ttfts_seconds_modified"])
 
     # IMPORTANT:
@@ -374,11 +363,9 @@ def main() -> None:
     ensure_alias(df, "core_instru_window_seconds", ["core_execution_window_seconds"])
     ensure_alias(df, "instru_exec_window_seconds", ["exec_window_seconds", "test_exec_window_seconds"])
 
-    # Candidate fallback window field(s)
     ensure_alias(df, "instru_window_seconds", ["instrumentation_window_seconds", "telemetry_instru_window_seconds"])
     ensure_alias(df, "instru_total_seconds", ["instrumentation_total_seconds"])
 
-    # Direct bounds / refinement fields
     ensure_alias(df, "instru_started_at", ["instrumentation_started_at", "instr_started_at"])
     ensure_alias(df, "instru_ended_at", ["instrumentation_ended_at", "instr_ended_at"])
     ensure_alias(df, "test_exec_started_at", ["first_exec_started_at"])
@@ -442,7 +429,9 @@ def main() -> None:
     )
 
     df["study_ttfts_fallback_compare_seconds"] = (
-        df["S2_time_to_first_instru_seconds"] if "S2_time_to_first_instru_seconds" in df.columns else np.nan
+        df["S2_time_to_first_instru_seconds"]
+        if "S2_time_to_first_instru_seconds" in df.columns
+        else np.nan
     )
 
     df["study_ttfts_overlap_valid"] = (
@@ -465,7 +454,7 @@ def main() -> None:
 
     df["study_instru_test_window_fallback_candidate_source"] = simple_available_source(
         df["study_instru_test_window_fallback_candidate_seconds"],
-        "telemetry_instru_window_candidate"
+        "telemetry_instru_window_candidate",
     )
 
     df["study_instru_test_window_fallback_candidate_name"] = np.where(
@@ -575,7 +564,10 @@ def main() -> None:
     # ROBUST FLAG (diagnostic only)
     # -------------------------------------------------
     base_runs = (
-        df.loc[df["Base"] & df["signature_hash_base"].notna(), ["signature_hash_base", "repo_full_name", "workflow_run_id"]]
+        df.loc[
+            df["Base"] & df["signature_hash_base"].notna(),
+            ["signature_hash_base", "repo_full_name", "workflow_run_id"],
+        ]
         .drop_duplicates()
         .copy()
     )
@@ -608,10 +600,22 @@ def main() -> None:
     # OUTPUT ORDERING
     # -------------------------------------------------
     id_cols = [
-        "repo_full_name", "workflow_id", "workflow_name", "workflow_run_id", "attempt",
-        "run_attempt", "event", "head_branch", "default_branch", "head_sha",
-        "style", "study_style", "styles", "invocation_types", "third_party_provider_name",
-        "instru_job_count"
+        "repo_full_name",
+        "workflow_id",
+        "workflow_name",
+        "workflow_run_id",
+        "attempt",
+        "run_attempt",
+        "event",
+        "head_branch",
+        "default_branch",
+        "head_sha",
+        "style",
+        "study_style",
+        "styles",
+        "invocation_types",
+        "third_party_provider_name",
+        "instru_job_count",
     ]
 
     controller_cols = [
@@ -671,7 +675,6 @@ def main() -> None:
         "study_ttfts_fallback_seconds",
         "study_ttfts_fallback_compare_seconds",
         "study_ttfts_overlap_valid",
-
         "study_instru_test_window_direct_seconds",
         "study_instru_test_window_direct_source_final",
         "study_instru_test_window_fallback_candidate_seconds",
@@ -685,7 +688,6 @@ def main() -> None:
         "study_instru_test_window_fallback_eligible",
         "study_instru_test_window_seconds",
         "study_instru_test_window_source_final",
-
         "study_other_seconds",
         "study_other_source_final",
         "study_pre_exec_seconds",
@@ -706,7 +708,8 @@ def main() -> None:
     ]
 
     front_cols = [
-        c for c in (
+        c
+        for c in (
             id_cols
             + controller_cols
             + core_raw_timeline_cols
@@ -747,10 +750,22 @@ def main() -> None:
     print(f"[info] study_ttfts_fallback_seconds available: {df_out['study_ttfts_fallback_seconds'].notna().sum()}")
     print(f"[info] study_ttfts_overlap_valid count: {int(df_out['study_ttfts_overlap_valid'].sum())}")
 
-    print(f"[info] study_instru_test_window_direct_seconds available: {df_out['study_instru_test_window_direct_seconds'].notna().sum()}")
-    print(f"[info] study_instru_test_window_fallback_candidate_seconds available: {df_out['study_instru_test_window_fallback_candidate_seconds'].notna().sum()}")
-    print(f"[info] study_instru_test_window_overlap_valid count: {int(df_out['study_instru_test_window_overlap_valid'].sum())}")
-    print(f"[info] study_instru_test_window_seconds available (resolved/default): {df_out['study_instru_test_window_seconds'].notna().sum()}")
+    print(
+        "[info] study_instru_test_window_direct_seconds available: "
+        f"{df_out['study_instru_test_window_direct_seconds'].notna().sum()}"
+    )
+    print(
+        "[info] study_instru_test_window_fallback_candidate_seconds available: "
+        f"{df_out['study_instru_test_window_fallback_candidate_seconds'].notna().sum()}"
+    )
+    print(
+        "[info] study_instru_test_window_overlap_valid count: "
+        f"{int(df_out['study_instru_test_window_overlap_valid'].sum())}"
+    )
+    print(
+        "[info] study_instru_test_window_seconds available (resolved/default): "
+        f"{df_out['study_instru_test_window_seconds'].notna().sum()}"
+    )
 
     print(f"[info] study_other_seconds available: {df_out['study_other_seconds'].notna().sum()}")
     print(f"[info] study_pre_exec_seconds available: {df_out['study_pre_exec_seconds'].notna().sum()}")
