@@ -118,6 +118,7 @@ jobs:
 
   aggregate-stage1:
     needs: run-stage1-shards
+    if: ${{ needs.run-stage1-shards.result == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -142,9 +143,14 @@ jobs:
           merge-multiple: false
 
       - name: Show downloaded Stage 1 shard outputs
+        if: always()
         run: |
-          echo "Downloaded files:"
-          find data/processed/stage1_shards_downloaded -type f | sort || true
+          echo "Downloaded directory tree:"
+          find data/processed/stage1_shards_downloaded -maxdepth 4 -print || true
+
+      - name: Fail clearly if no Stage 1 shard artifacts were downloaded
+        run: |
+          find data/processed/stage1_shards_downloaded -mindepth 1 -maxdepth 1 -type d | grep . >/dev/null
 
       - name: Aggregate Stage 1
         run: |
@@ -155,9 +161,11 @@ jobs:
             --output-dir data/processed \
             --file verified_workflows_v16.csv
 
+      - name: Inspect aggregated Stage 1 output
+        if: always()
+        run: |
           echo "Stage 1 merged rows:"
           wc -l data/processed/verified_workflows_v16.csv || true
-
           echo "Stage 1 merged preview:"
           sed -n '1,10p' data/processed/verified_workflows_v16.csv || true
 

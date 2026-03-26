@@ -71,17 +71,17 @@ jobs:
         run: |
           python -m pipeline.stage1_verified_workflows
 
-      - name: Validate Stage 1 output exists
-        run: |
-          test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/verified_workflows_v16.csv"
-
-      - name: Check Stage 1 output
+      - name: Inspect Stage 1 output
         if: always()
         run: |
           echo "Stage 1 output lines:"
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/verified_workflows_v16.csv" || true
           echo "Stage 1 output preview:"
           sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/verified_workflows_v16.csv" || true
+
+      - name: Validate Stage 1 output exists
+        run: |
+          test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/verified_workflows_v16.csv"
 
       - name: Upload Stage 1 shard output
         uses: actions/upload-artifact@v7
