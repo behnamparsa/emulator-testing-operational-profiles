@@ -709,7 +709,15 @@ def main() -> None:
 
     rows = load_verified_workflows(IN_VERIFIED_WORKFLOWS_CSV)
     if PROCESS_ONLY_LOOKS_LIKE_INSTRU:
-        rows = [r for r in rows if str(r.get("looks_like_instru", "")).strip().lower() in {"yes", "true", "1"}]
+        rows = [r for r in rows if (r.get("looks_like_instru", "").strip().lower() == "yes")]
+
+    if not rows:
+        out_run_fields = ["full_name", "workflow_identifier", "workflow_id", "workflow_path", "run_id", "run_number", "run_attempt"]
+        out_style_fields = ["full_name", "workflow_identifier", "workflow_id", "workflow_path", "run_id", "run_number", "run_attempt", "target_style"]
+        ensure_csv_header(OUT_RUN_INVENTORY_CSV, out_run_fields)
+        ensure_csv_header(OUT_RUN_PER_STYLE_CSV, out_style_fields)
+        print("No eligible workflows found for this shard after filtering; wrote header-only Stage 2 outputs.")
+        return
 
     after_dt = iso_to_dt(RUN_CREATED_AT_AFTER) if RUN_CREATED_AT_AFTER else None
 
@@ -808,13 +816,6 @@ def main() -> None:
         "S2_time_to_first_instru_from_anchor_job_seconds",
         "S2_time_to_first_instru_from_anchor_job_quality",
     ]
-
-    ensure_csv_header(OUT_RUN_INVENTORY_CSV, out_fields)
-
-    if not rows:
-        print("Stage 2: no workflows to process after Stage-1 filter; wrote header-only run_inventory.csv")
-        return
-
 
     ensure_csv_header(OUT_RUN_INVENTORY_CSV, out_fields)
     existing_run_ids = load_existing_keys(OUT_RUN_INVENTORY_CSV, "run_id")

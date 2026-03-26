@@ -648,7 +648,7 @@ def extract_junit_cases_from_artifacts(gh: GitHubClient, full_name: str, run_id:
 # MAIN
 # =========================
 def main() -> None:
-    tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
+    tokens = load_tokens_from_env_file(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
     gh = GitHubClient(tokens)
 
     run_rows, _ = read_csv_rows(IN_RUN_METRICS_CSV)

@@ -9,13 +9,13 @@ from typing import Dict, List, Tuple, Iterable
 
 
 CSV_DEFS = {
-    "verified_workflows_v16.csv": ["full_name", "workflow_id", "workflow_path"],
-    "run_inventory.csv": ["full_name", "run_id", "run_attempt"],
+    "verified_workflows_v16.csv": ["repo_full_name", "workflow_id", "workflow_path"],
+    "run_inventory.csv": ["repo_full_name", "workflow_run_id", "attempt"],
     "run_inventory_per_style.csv": ["full_name", "run_id", "run_attempt", "target_style"],
-    "run_metrics_v16_stage3_enhanced.csv": ["full_name", "run_id", "run_attempt"],
-    "run_steps_v16_stage3_breakdown.csv": ["full_name", "run_id", "run_attempt", "job_name", "step_number", "step_name"],
-    "run_per_style_v1_stage3.csv": ["full_name", "run_id", "run_attempt", "target_style"],
-    "run_workload_signature_v3.csv": ["full_name", "run_id"],
+    "run_metrics_v16_stage3_enhanced.csv": ["repo_full_name", "workflow_run_id", "attempt"],
+    "run_steps_v16_stage3_breakdown.csv": ["repo_full_name", "workflow_run_id", "attempt", "job_name", "step_number", "step_name"],
+    "run_per_style_v1_stage3.csv": ["repo_full_name", "workflow_run_id", "attempt", "style"],
+    "run_workload_signature_v3.csv": ["repo_full_name", "workflow_run_id", "attempt", "style"],
 }
 
 
@@ -50,8 +50,10 @@ def ordered_union(all_headers: Iterable[List[str]]) -> List[str]:
 def dedupe_rows(rows: List[Dict[str, str]], dedupe_keys: List[str]) -> List[Dict[str, str]]:
     if not rows or not dedupe_keys:
         return rows
+
     if not all(any(k in r for r in rows) for k in dedupe_keys):
         return rows
+
     out: List[Dict[str, str]] = []
     seen = set()
     for row in rows:
@@ -67,7 +69,11 @@ def dedupe_rows(rows: List[Dict[str, str]], dedupe_keys: List[str]) -> List[Dict
 
 
 def collect_shard_dirs(base: Path) -> List[Path]:
-    return [child for child in sorted(base.iterdir()) if child.is_dir() and child.name.startswith("shard-")]
+    out: List[Path] = []
+    for child in sorted(base.iterdir()):
+        if child.is_dir() and child.name.startswith("shard-"):
+            out.append(child)
+    return out
 
 
 def main() -> None:
@@ -96,6 +102,7 @@ def main() -> None:
             matches = list(shard_dir.rglob(filename))
             if not matches:
                 continue
+
             shard_file = matches[0]
             found_paths.append(str(shard_file))
             headers, rows = read_csv(shard_file)
@@ -103,11 +110,22 @@ def main() -> None:
             combined_rows.extend(rows)
             contributing += 1
 
+        # Write header-only merged files too, even if no shard contributed this CSV.
         if not file_headers:
+            merged_headers = dedupe_keys[:] if dedupe_keys else []
+            write_csv(output_dir / filename, merged_headers, [])
+            manifest["merged_files"][filename] = {
+                "input_shards": 0,
+                "rows_before_dedupe": 0,
+                "rows_after_dedupe": 0,
+                "dedupe_keys": dedupe_keys,
+                "found_paths": found_paths,
+            }
             continue
 
         merged_headers = ordered_union(file_headers)
         merged_rows = dedupe_rows(combined_rows, dedupe_keys)
+
         write_csv(output_dir / filename, merged_headers, merged_rows)
         manifest["merged_files"][filename] = {
             "input_shards": contributing,
