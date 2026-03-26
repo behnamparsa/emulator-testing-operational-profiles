@@ -37,11 +37,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Prepare stage 1 shards
+      - name: Prepare Stage 1 shards
         run: |
           mkdir -p data/processed/stage1_shards
-          test -f "${{ inputs.url_list_path }}"
-          python scripts/split_csv_rows.py             --input "${{ inputs.url_list_path }}"             --output-root data/processed/stage1_shards             --base-name URL_List.csv             --chunk-size "${{ inputs.chunk_size }}"
+          python scripts/split_csv_rows.py \
+            --input data/raw/URL_List.csv \
+            --chunk-size ${{ inputs.chunk_size }} \
+            --out-dir data/processed/stage1_shards \
+            --filename URL_List.csv
       - name: Upload stage 1 shard definitions
         uses: actions/upload-artifact@v6
         with:

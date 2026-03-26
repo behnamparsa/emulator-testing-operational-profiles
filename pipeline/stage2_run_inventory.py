@@ -78,7 +78,7 @@ BACKOFF_BASE_S = 1.7
 BACKOFF_CAP_S = 60
 MAX_PAGES_PER_LIST = 2000
 
-MAX_TOKENS_TO_USE = 7
+MAX_TOKENS_TO_USE = 10
 SLEEP_BETWEEN_WORKFLOWS_SEC = 0.05
 
 
@@ -705,6 +705,7 @@ def main() -> None:
         OUT_RUN_INVENTORY_CSV.unlink()
 
     tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
+    print(f"Loaded GitHub token pool size: {len(tokens)}")
     gh = GitHubClient(tokens)
 
     rows = load_verified_workflows(IN_VERIFIED_WORKFLOWS_CSV)

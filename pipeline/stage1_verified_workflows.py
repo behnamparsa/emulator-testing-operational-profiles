@@ -62,7 +62,7 @@ ROOT_DIR = get_root_dir()
 IN_URL_LIST_CSV = ROOT_DIR / "URL_List.csv"               # input list of repos
 OUT_STAGE1_CSV  = ROOT_DIR / "verified_workflows_v16.csv" # Stage-1 output name (original)
 
-MAX_TOKENS_TO_USE = 7
+MAX_TOKENS_TO_USE = 10
 
 CONNECT_TIMEOUT_S = 10
 READ_TIMEOUT_S = 60
@@ -1388,6 +1388,7 @@ def main() -> None:
     print(f"Stage1 input CSV: {IN_URL_LIST_CSV}")
     print(f"Stage1 output CSV: {OUT_STAGE1_CSV}")
     print(f"Stage1 token sources loaded: {len(loaded_tokens)}")
+    print(f"Stage1 PAT pool size: {len([t for t in tokens if t])}")
     auth_modes = ["GH_PAT" if t else "unauthenticated" for t in tokens]
     print(f"Stage1 cross-repo auth modes: {auth_modes}")
     url_rows, url_fields = read_csv_rows(IN_URL_LIST_CSV)

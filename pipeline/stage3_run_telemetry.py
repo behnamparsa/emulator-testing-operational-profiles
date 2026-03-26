@@ -71,7 +71,7 @@ OUT_STAGE3A_RUNS_CSV = ROOT_DIR / "run_metrics_v16_stage3_enhanced.csv"
 OUT_STAGE3B_STEPS_CSV = ROOT_DIR / "run_steps_v16_stage3_breakdown.csv"
 OUT_STAGE3C_RUN_PER_STYLE_CSV = ROOT_DIR / "run_per_style_v1_stage3.csv"
 
-MAX_TOKENS_TO_USE = 7
+MAX_TOKENS_TO_USE = 10
 PROCESS_ONLY_RELEVANT_ROWS = True
 
 CONNECT_TIMEOUT_S = 10
@@ -1255,6 +1255,7 @@ def main() -> None:
     tokens = []
     try:
         tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
+        print(f"Loaded GitHub token pool size: {len(tokens)}")
     except Exception:
         tokens = read_env_tokens(TOKENS_ENV_PATH)
     gh = GitHubClient(tokens)
