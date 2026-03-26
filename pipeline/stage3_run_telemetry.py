@@ -65,7 +65,8 @@ except ImportError:
 TOKENS_ENV_PATH = get_tokens_env_path()
 ROOT_DIR = get_root_dir()
 
-IN_STAGE2_CSV = ROOT_DIR / "run_inventory.csv"
+IN_STAGE2_RUN_CSV = ROOT_DIR / "run_inventory.csv"
+IN_STAGE2_PER_STYLE_CSV = ROOT_DIR / "run_inventory_per_style.csv"
 
 OUT_STAGE3A_RUNS_CSV = ROOT_DIR / "run_metrics_v16_stage3_enhanced.csv"
 OUT_STAGE3B_STEPS_CSV = ROOT_DIR / "run_steps_v16_stage3_breakdown.csv"
@@ -324,6 +325,47 @@ def parse_owner_repo(repo_full_name: str) -> Tuple[Optional[str], Optional[str]]
     if not owner or not repo:
         return None, None
     return owner, repo
+
+
+# =========================
+# Current Stage 2 schema compatibility
+# =========================
+def get_repo_full_name(row: Dict[str, str]) -> str:
+    return norm(row.get("repo_full_name") or row.get("full_name"))
+
+def get_run_id(row: Dict[str, str]) -> str:
+    v = row.get("workflow_run_id")
+    if v in (None, ""):
+        v = row.get("run_id")
+    return norm(v)
+
+def get_attempt(row: Dict[str, str]) -> str:
+    v = row.get("attempt")
+    if v in (None, ""):
+        v = row.get("run_attempt")
+    return norm(v)
+
+def get_declared_styles(row: Dict[str, str]) -> List[str]:
+    return split_styles(
+        row.get("target_style")
+        or row.get("Inferred_Label")
+        or row.get("styles")
+        or row.get("style")
+    )
+
+def adapt_base_row_for_stage3(row: Dict[str, str]) -> Dict[str, str]:
+    out = dict(row)
+    # carry old aliases expected by downstream Stage 3 logic while preserving current fields
+    out["repo_full_name"] = get_repo_full_name(row)
+    out["workflow_run_id"] = get_run_id(row)
+    out["attempt"] = get_attempt(row)
+    # Stage 3 legacy style reads from Inferred_Label/style; normalize to current style fields
+    if not norm(out.get("Inferred_Label")):
+        out["Inferred_Label"] = row.get("target_style") or row.get("styles") or row.get("style") or ""
+    if not norm(out.get("style")) and norm(row.get("target_style")):
+        out["style"] = row.get("target_style")
+    return out
+
 
 
 def gh_contents_raw(gh: GitHubClient, owner: str, repo: str, path: str, ref: str) -> Optional[str]:
@@ -624,7 +666,7 @@ def infer_flags_from_step(step: Dict[str, str], row: Dict[str, str]) -> Dict[str
     uses = norm(step.get("uses"))
     blob = text_blob(nm, uses, run_cmd)
 
-    declared_styles = split_styles(row.get("Inferred_Label") or row.get("styles") or row.get("style"))
+    declared_styles = get_declared_styles(row)
 
     thirdparty_declared = "Third-Party" in declared_styles
     custom_declared = "Custom" in declared_styles
@@ -705,7 +747,7 @@ def gh_list_all_jobs_for_run(gh: GitHubClient, owner: str, repo: str, run_id: st
 def jobs_to_step_rows(jobs: List[dict], row: Dict[str, str]) -> List[Dict[str, object]]:
     out: List[Dict[str, object]] = []
     run_started = iso_to_dt(row.get("run_started_at"))
-    declared_styles = split_styles(row.get("Inferred_Label") or row.get("styles") or row.get("style"))
+    declared_styles = get_declared_styles(row)
 
     for job in jobs:
         job_name = norm(job.get("name"))
@@ -1179,7 +1221,7 @@ def compute_style_metrics_for_run(row: Dict[str, str], step_rows: List[Dict[str,
 def build_run_level_row(base_row: Dict[str, str], style_payloads: Dict[str, Dict[str, object]]) -> Dict[str, object]:
     out: Dict[str, object] = dict(base_row)
 
-    all_styles = split_styles(base_row.get("Inferred_Label") or base_row.get("styles") or base_row.get("style"))
+    all_styles = get_declared_styles(base_row)
     picked = all_styles[0] if all_styles else ""
     primary = style_payloads.get(picked) if picked else None
 
@@ -1199,14 +1241,14 @@ def build_run_level_row(base_row: Dict[str, str], style_payloads: Dict[str, Dict
 
 def build_step_breakdown_rows(base_row: Dict[str, str], step_rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
     out = []
-    declared = split_styles(base_row.get("Inferred_Label") or base_row.get("styles") or base_row.get("style"))
+    declared = get_declared_styles(base_row)
     for st in step_rows:
         out.append(
             {
-                "repo_full_name": base_row.get("repo_full_name", ""),
+                "full_name": base_row.get("repo_full_name", ""),
                 "workflow_id": base_row.get("workflow_id", ""),
-                "workflow_run_id": base_row.get("workflow_run_id", ""),
-                "attempt": base_row.get("attempt", ""),
+                "run_id": base_row.get("workflow_run_id", ""),
+                "run_attempt": base_row.get("attempt", ""),
                 "declared_styles": "|".join(declared),
                 "job_name": st.get("job_name", ""),
                 "step_number": st.get("step_number", ""),
@@ -1233,7 +1275,7 @@ def build_step_breakdown_rows(base_row: Dict[str, str], step_rows: List[Dict[str
 
 def build_run_per_style_rows(base_row: Dict[str, str], style_payloads: Dict[str, Dict[str, object]]) -> List[Dict[str, object]]:
     out = []
-    declared = split_styles(base_row.get("Inferred_Label") or base_row.get("styles") or base_row.get("style"))
+    declared = get_declared_styles(base_row)
     for style in declared:
         p = style_payloads.get(style, empty_style_metric_dict())
         row = dict(base_row)
@@ -1251,6 +1293,7 @@ def build_run_per_style_rows(base_row: Dict[str, str], style_payloads: Dict[str,
 # =========================
 # Main
 # =========================
+
 def main() -> None:
     tokens = []
     try:
@@ -1260,46 +1303,90 @@ def main() -> None:
         tokens = read_env_tokens(TOKENS_ENV_PATH)
     gh = GitHubClient(tokens)
 
-    rows = read_csv_rows(IN_STAGE2_CSV)
+    run_rows = read_csv_rows(IN_STAGE2_RUN_CSV)
+    per_style_driver_rows = read_csv_rows(IN_STAGE2_PER_STYLE_CSV)
+
+    print(f"Stage3 run input rows: {len(run_rows)} from {IN_STAGE2_RUN_CSV}")
+    print(f"Stage3 per-style input rows: {len(per_style_driver_rows)} from {IN_STAGE2_PER_STYLE_CSV}")
+
+    # Build run-level reference by (repo, run_id, attempt) so each per-style row can inherit rich Stage2 fields.
+    run_ref: Dict[Tuple[str, str, str], Dict[str, str]] = {}
+    for r in run_rows:
+        rr = adapt_base_row_for_stage3(r)
+        key = (rr.get("repo_full_name",""), rr.get("workflow_run_id",""), rr.get("attempt",""))
+        run_ref[key] = rr
+
+    driver_rows: List[Dict[str, str]] = []
+    for r in per_style_driver_rows:
+        rr = adapt_base_row_for_stage3(r)
+        key = (rr.get("repo_full_name",""), rr.get("workflow_run_id",""), rr.get("attempt",""))
+        merged = dict(run_ref.get(key, {}))
+        merged.update(rr)  # per-style row should win for style field
+        driver_rows.append(merged)
+
     if PROCESS_ONLY_RELEVANT_ROWS:
-        rows = [r for r in rows if split_styles(r.get("Inferred_Label") or r.get("styles") or r.get("style"))]
+        driver_rows = [r for r in driver_rows if get_declared_styles(r)]
 
     run_rows_out: List[Dict[str, object]] = []
     step_rows_out: List[Dict[str, object]] = []
     per_style_rows_out: List[Dict[str, object]] = []
 
-    iterator = tqdm(rows, desc="Stage3") if tqdm else rows
+    iterator = tqdm(driver_rows, desc="Stage3") if tqdm else driver_rows
+
+    # Avoid duplicate expensive job fetches across multiple per-style rows for the same run
+    processed_runs: Set[Tuple[str, str, str]] = set()
+
     for row in iterator:
-        repo_full_name = norm(row.get("repo_full_name"))
-        run_id = norm(row.get("workflow_run_id"))
+        repo_full_name = get_repo_full_name(row)
+        run_id = get_run_id(row)
+        attempt = get_attempt(row)
         owner, repo = parse_owner_repo(repo_full_name)
         if not owner or not repo or not run_id:
-            run_rows_out.append(build_run_level_row(row, {}))
+            per_style_rows_out.extend(build_run_per_style_rows(row, {}))
             continue
+
+        run_key = (repo_full_name, run_id, attempt)
+        if run_key in processed_runs:
+            # Still emit per-style row for this driver row using empty payload if duplicate;
+            # duplicates are not expected when driver is run_inventory_per_style, but guard anyway.
+            per_style_rows_out.extend(build_run_per_style_rows(row, {}))
+            continue
+
+        processed_runs.add(run_key)
 
         jobs = gh_list_all_jobs_for_run(gh, owner, repo, run_id)
         steps = jobs_to_step_rows(jobs, row)
 
         style_payloads: Dict[str, Dict[str, object]] = {}
-        for style in split_styles(row.get("Inferred_Label") or row.get("styles") or row.get("style")):
+        for style in get_declared_styles(row):
             style_payloads[style] = compute_style_metrics_for_run(row, steps, style)
 
         run_rows_out.append(build_run_level_row(row, style_payloads))
         step_rows_out.extend(build_step_breakdown_rows(row, steps))
         per_style_rows_out.extend(build_run_per_style_rows(row, style_payloads))
 
+    # De-duplicate final outputs with current schema keys
+    def dedupe_rows(rows: List[Dict[str, object]], keys: List[str]) -> List[Dict[str, object]]:
+        seen = set()
+        out = []
+        for r in rows:
+            k = tuple(str(r.get(x, "")) for x in keys)
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(r)
+        return out
+
+    run_rows_out = dedupe_rows(run_rows_out, ["repo_full_name", "workflow_run_id", "attempt"])
+    step_rows_out = dedupe_rows(step_rows_out, ["full_name", "run_id", "run_attempt", "job_name", "global_step_index", "step_name"])
+    per_style_rows_out = dedupe_rows(per_style_rows_out, ["repo_full_name", "workflow_run_id", "attempt", "style"])
+
     run_fields = list(unique_preserve([k for r in run_rows_out for k in r.keys()]))
     step_fields = list(unique_preserve([k for r in step_rows_out for k in r.keys()]))
     per_style_fields = list(unique_preserve([k for r in per_style_rows_out for k in r.keys()]))
 
-    write_csv(OUT_STAGE3A_RUNS_CSV, run_fields, run_rows_out)
-    write_csv(OUT_STAGE3B_STEPS_CSV, step_fields, step_rows_out)
-    write_csv(OUT_STAGE3C_RUN_PER_STYLE_CSV, per_style_fields, per_style_rows_out)
+    write_csv_rows(OUT_STAGE3A_RUNS_CSV, run_fields, run_rows_out)
+    write_csv_rows(OUT_STAGE3B_STEPS_CSV, step_fields, step_rows_out)
+    write_csv_rows(OUT_STAGE3C_RUN_PER_STYLE_CSV, per_style_fields, per_style_rows_out)
 
-    print(f"[stage3] wrote: {OUT_STAGE3A_RUNS_CSV}")
-    print(f"[stage3] wrote: {OUT_STAGE3B_STEPS_CSV}")
-    print(f"[stage3] wrote: {OUT_STAGE3C_RUN_PER_STYLE_CSV}")
-
-
-if __name__ == "__main__":
-    main()
+    print(f"[done] Stage 3 runs rows={len(run_rows_out)} steps rows={len(step_rows_out)} per-style rows={len(per_style_rows_out)}")
