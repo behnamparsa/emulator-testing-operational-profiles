@@ -39,10 +39,11 @@ jobs:
           pip install -r requirements.txt
       - name: Prepare Stage 1 shards
         run: |
+          rm -rf data/processed/stage1_shards
           mkdir -p data/processed/stage1_shards
           python scripts/split_csv_rows.py \
-            --input data/raw/URL_List.csv \
-            --chunk-size ${{ inputs.chunk_size }} \
+            --input "${{ inputs.url_list_path }}" \
+            --chunk-size "${{ inputs.chunk_size }}" \
             --out-dir data/processed/stage1_shards \
             --filename URL_List.csv
       - name: Upload stage 1 shard definitions
