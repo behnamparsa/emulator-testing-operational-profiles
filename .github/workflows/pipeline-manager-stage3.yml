@@ -1,0 +1,114 @@
+name: Pipeline Manager Stage 3
+
+on:
+  workflow_dispatch:
+    inputs:
+      chunk_size:
+        description: Per-style rows per Stage 3 shard
+        required: false
+        default: '10'
+      max_parallel:
+        description: Max parallel Stage 3 shards
+        required: false
+        default: '3'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  prepare-stage3-shards:
+    runs-on: ubuntu-latest
+    outputs:
+      shard_matrix: ${{ steps.build.outputs.shard_matrix }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Prepare stage 3 shards
+        run: |
+          mkdir -p data/processed/stage3_shards
+          test -f data/processed/run_inventory.csv
+          test -f data/processed/run_inventory_per_style.csv
+          python scripts/prepare_stage3_shards.py             --run-inventory data/processed/run_inventory.csv             --run-per-style data/processed/run_inventory_per_style.csv             --output-root data/processed/stage3_shards             --chunk-size "${{ inputs.chunk_size }}"
+      - name: Upload stage 3 shard definitions
+        uses: actions/upload-artifact@v6
+        with:
+          name: stage3-shard-definitions
+          path: data/processed/stage3_shards
+      - id: build
+        name: Build shard matrix
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('data/processed/stage3_shards')
+          shards = sorted([p.name for p in root.iterdir() if p.is_dir()])
+          matrix = {'include': [{'shard_id': s} for s in shards]}
+          with open('${GITHUB_OUTPUT}', 'a', encoding='utf-8') as fh:
+              fh.write(f"shard_matrix={json.dumps(matrix)}\n")
+          print(matrix)
+          PY
+
+  run-stage3-shards:
+    needs: prepare-stage3-shards
+    if: ${{ fromJson(needs.prepare-stage3-shards.outputs.shard_matrix).include[0] != null }}
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJson(inputs.max_parallel) }}
+      matrix: ${{ fromJson(needs.prepare-stage3-shards.outputs.shard_matrix) }}
+    uses: ./.github/workflows/stage3-shard.yml
+    with:
+      shard_id: ${{ matrix.shard_id }}
+
+  aggregate-stage3:
+    needs: run-stage3-shards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Download stage 3 shard outputs
+        uses: actions/download-artifact@v6
+        with:
+          pattern: stage3-*
+          path: data/processed/stage3_shards_downloaded
+          merge-multiple: false
+      - name: Aggregate Stage 3
+        run: |
+          mkdir -p data/processed
+          python scripts/aggregate_selected_results.py             --input-root data/processed/stage3_shards_downloaded             --output-root data/processed             --files run_metrics_v16_stage3_enhanced.csv run_steps_v16_stage3_breakdown.csv run_per_style_v1_stage3.csv
+          echo 'Stage 3 merged run_metrics rows:'
+          wc -l data/processed/run_metrics_v16_stage3_enhanced.csv || true
+          echo 'Stage 3 merged run_steps rows:'
+          wc -l data/processed/run_steps_v16_stage3_breakdown.csv || true
+          echo 'Stage 3 merged run_per_style rows:'
+          wc -l data/processed/run_per_style_v1_stage3.csv || true
+      - name: Commit Stage 3 outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed/run_metrics_v16_stage3_enhanced.csv                   data/processed/run_steps_v16_stage3_breakdown.csv                   data/processed/run_per_style_v1_stage3.csv
+          git diff --cached --quiet || git commit -m "Stage 3 manager: telemetry outputs"
+          git push
+      - name: Upload Stage 3 artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: stage3
+          path: |
+            data/processed/run_metrics_v16_stage3_enhanced.csv
+            data/processed/run_steps_v16_stage3_breakdown.csv
+            data/processed/run_per_style_v1_stage3.csv

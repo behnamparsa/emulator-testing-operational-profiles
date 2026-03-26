@@ -1,0 +1,110 @@
+name: Pipeline Manager Stage 1
+
+on:
+  workflow_dispatch:
+    inputs:
+      url_list_path:
+        description: Path to URL list CSV
+        required: false
+        default: 'data/processed/URL_List.csv'
+      chunk_size:
+        description: URLs per Stage 1 shard
+        required: false
+        default: '10'
+      max_parallel:
+        description: Max parallel Stage 1 shards
+        required: false
+        default: '3'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  prepare-stage1-shards:
+    runs-on: ubuntu-latest
+    outputs:
+      shard_matrix: ${{ steps.build.outputs.shard_matrix }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Prepare stage 1 shards
+        run: |
+          mkdir -p data/processed/stage1_shards
+          test -f "${{ inputs.url_list_path }}"
+          python scripts/split_csv_rows.py             --input "${{ inputs.url_list_path }}"             --output-root data/processed/stage1_shards             --base-name URL_List.csv             --chunk-size "${{ inputs.chunk_size }}"
+      - name: Upload stage 1 shard definitions
+        uses: actions/upload-artifact@v6
+        with:
+          name: stage1-shard-definitions
+          path: data/processed/stage1_shards
+      - id: build
+        name: Build shard matrix
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('data/processed/stage1_shards')
+          shards = sorted([p.name for p in root.iterdir() if p.is_dir()])
+          matrix = {'include': [{'shard_id': s} for s in shards]}
+          with open('${GITHUB_OUTPUT}', 'a', encoding='utf-8') as fh:
+              fh.write(f"shard_matrix={json.dumps(matrix)}\n")
+          print(matrix)
+          PY
+
+  run-stage1-shards:
+    needs: prepare-stage1-shards
+    if: ${{ fromJson(needs.prepare-stage1-shards.outputs.shard_matrix).include[0] != null }}
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJson(inputs.max_parallel) }}
+      matrix: ${{ fromJson(needs.prepare-stage1-shards.outputs.shard_matrix) }}
+    uses: ./.github/workflows/stage1-shard.yml
+    with:
+      shard_id: ${{ matrix.shard_id }}
+
+  aggregate-stage1:
+    needs: run-stage1-shards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Download stage 1 shard outputs
+        uses: actions/download-artifact@v6
+        with:
+          pattern: stage1-*
+          path: data/processed/stage1_shards_downloaded
+          merge-multiple: false
+      - name: Aggregate Stage 1
+        run: |
+          mkdir -p data/processed
+          python scripts/aggregate_selected_results.py             --input-root data/processed/stage1_shards_downloaded             --output-root data/processed             --files verified_workflows_v16.csv
+          echo 'Stage 1 merged rows:'
+          wc -l data/processed/verified_workflows_v16.csv || true
+      - name: Commit Stage 1 output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed/verified_workflows_v16.csv
+          git diff --cached --quiet || git commit -m "Stage 1 manager: verified_workflows_v16.csv"
+          git push
+      - name: Upload Stage 1 artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: stage1
+          path: data/processed/verified_workflows_v16.csv
