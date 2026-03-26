@@ -55,8 +55,8 @@ except Exception:
 # =========================
 # CONFIG (KEEP THESE AS YOUR STAGE-1 CONTRACT)
 # =========================
-TOKENS_ENV_PATH = get_tokens_env_path()
-ROOT_DIR = get_root_dir()
+TOKENS_ENV_PATH = Path(r"C:\GitHub\Android-Mobile-Apps\All_Tokens.env")
+ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
 
 IN_URL_LIST_CSV = ROOT_DIR / "URL_List.csv"               # input list of repos
 OUT_STAGE1_CSV  = ROOT_DIR / "verified_workflows_v16.csv" # Stage-1 output name (original)
@@ -156,11 +156,23 @@ def parse_repo_full_name(url: str) -> str:
     return ""
 
 def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
-    """CI-safe token loader.
-    - In GitHub Actions, reads GH_PAT/GITHUB_TOKEN from environment.
-    - Locally, will also read from env_path if it exists.
-    """
-    return load_github_tokens(env_path=env_path, max_tokens=max_tokens)
+    if not env_path.exists():
+        raise FileNotFoundError(f"Tokens env file not found: {env_path}")
+    tokens: List[str] = []
+    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k.startswith("GITHUB_TOKEN_") and v:
+            tokens.append(v)
+            if len(tokens) >= max_tokens:
+                break
+    if not tokens:
+        raise ValueError(f"No tokens found in {env_path}. Expected keys like GITHUB_TOKEN_1=...")
+    return tokens
 
 def sanitize_gha_expr(text: str) -> str:
     # "connected${{ matrix.flavor }}DebugAndroidTest" -> "connectedDebugAndroidTest"
@@ -847,7 +859,7 @@ def extract_test_invocation_step_names_and_anchor(
 
         direct_3p = _is_third_party_invoke_non_flutter(low)
         direct_emu_wtf_indirect = _is_emulator_wtf_indirect_invoke(low)
-        direct_bs_indirect = _is_browserstack_indirect_invoke(low)  # NEW
+        direct_bs_indirect = _is_browserstack_indirect_invoke(low)
 
         direct_flutter_androidish = _flutter_androidish_from_text(low, runtime_ev)
         direct_detox_androidish = _detox_androidish_from_text(low, runtime_ev)
@@ -862,7 +874,7 @@ def extract_test_invocation_step_names_and_anchor(
             or direct_adb
             or direct_3p
             or direct_emu_wtf_indirect
-            or direct_bs_indirect          # NEW
+            or direct_bs_indirect
             or direct_flutter_androidish
             or direct_detox_androidish
         ):
@@ -966,7 +978,7 @@ def scan_text_for_evidence(text: str) -> Dict[str, Union[bool, List[str]]]:
 
     # Strict indirect invokes
     tp_invoke_emu_wtf_indirect = _is_emulator_wtf_indirect_invoke(low)
-    tp_invoke_bs_indirect = _is_browserstack_indirect_invoke(low)  # NEW
+    tp_invoke_bs_indirect = _is_browserstack_indirect_invoke(low)
 
     tp_invoke = bool(tp_invoke_direct or tp_invoke_emu_wtf_indirect or tp_invoke_bs_indirect)
 
@@ -1043,10 +1055,10 @@ def compute_styles(ev: Dict) -> List[str]:
         styles.append("Real-Device")
 
     if ev.get("emu_comm"):
-        styles.append("Emu_Community")
+        styles.append("Community")
     else:
         if ev.get("emu_custom"):
-            styles.append("Emu_Custom")
+            styles.append("Custom")
 
     return sorted(set(styles))
 
@@ -1068,7 +1080,7 @@ def infer_instru_detect_method(styles: List[str], inv: List[str]) -> str:
         return "third_party_cli"
     if "GMD" in styles:
         return "gradle_gmd"
-    if "Emu_Community" in styles or "Emu_Custom" in styles:
+    if "Community" in styles or "Custom" in styles:
         if any(x in inv for x in ["Gradle_Connected", "Gradle"]):
             return "gradle_connected"
         if "Detox" in inv:

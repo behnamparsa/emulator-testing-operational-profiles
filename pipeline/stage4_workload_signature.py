@@ -1,36 +1,47 @@
 # -*- coding: utf-8 -*-
 """
-Stage 4 (MIN SIGNATURE, FIXED + STAGE3-ONLY) — Style-agnostic workload signature for normalization
+Stage 4 — Current Study Plan
+Style-agnostic workload signature for normalization
 
-Fixes included:
-1) full_name normalization (handle bad/missing columns / URLs / BOM / whitespace)
-2) job_count_total_bucket "strange values" (e.g., dates) => stricter numeric parsing + safer source selection
-3) Improve runner_os_bucket detection (prefer run/job telemetry if present, else step rows, else YAML runs-on parse)
-4) Restore test_suite_size_bucket by extracting junit_cases via bounded artifact parsing (optional but enabled by default)
-5) **NEW (critical): Stage 4 now fingerprints ONLY Stage 3 executed runs**
-   - Stage 3 condition: instru_job_count > 0 (executed instrumentation evidence)
-6) **NEW (recommended): emit BOTH base and full signature hashes**
-   - base: OS + jobs + steps  (robust when suite size is unknown)
-   - full: OS + jobs + steps + suite size (refines when known)
-   - signature_hash column remains the FULL hash for backward compatibility
+Current-plan alignment
+1) Compatible with current Stage 3 outputs
+   - run_metrics_v16_stage3_enhanced.csv
+   - run_steps_v16_stage3_breakdown.csv
+2) Fingerprints ONLY Stage 3 executed runs
+   - Stage 3 executed condition is preserved upstream
+3) Handles Stage 3 run×style step duplication by deduplicating executed steps
+4) Prefers effective_ref_for_stage4 from Stage 3 run-level output
+   - falls back to head_sha if needed
+5) Skips Stage 3 rows with explicit stage3_error where possible
+6) Emits BOTH base and full signature hashes
+   - base: OS + jobs + steps
+   - full: OS + jobs + steps + suite size
+   - signature_hash remains the FULL hash for backward compatibility
+7) Keeps stricter numeric parsing and safer source selection
+8) Keeps YAML runs-on parsing fallback
+9) Keeps optional bounded artifact parsing for junit_cases / test_suite_size_bucket
 
-Signature hash inputs (style-agnostic):
-- runner_os_bucket
-- job_count_total_bucket
-- step_count_total_bucket (executed if available else declared from YAML else unknown)
-- test_suite_size_bucket (from parsed junit_cases if available else unknown)
+Interpretation
+- Stage 4 remains style-agnnostic
+- It fingerprints workload structure, not Layer 1 or Layer 2 timing definitions
+- Therefore the signature logic remains based on:
+    runner_os_bucket
+    job_count_total_bucket
+    step_count_total_bucket
+    test_suite_size_bucket (full signature only)
 
-Provenance/support fields included:
-- signature_inputs (steps/yaml/artifacts presence)
-- step_count_exec + declared + source
-- junit_cases + source
+Important note
+- The current study changed Stage 3 Layer-2 timing outputs
+- The study also dropped instrumentation-specific conclusion as a study field
+- Stage 4 does NOT use those timing fields or any instrumentation-conclusion field
+- Stage 4 continues to fingerprint the overall executed workload structure of the run
 
 Inputs (ROOT_DIR):
 - run_metrics_v16_stage3_enhanced.csv
-- run_steps_v16_stage3_breakdown.csv (must be CSV; unzip if needed)
+- run_steps_v16_stage3_breakdown.csv
 
 Output:
-- run_workload_signature_v2_min_fixed.csv
+- run_workload_signature_v3.csv
 """
 
 import base64
@@ -53,11 +64,11 @@ from config.runtime import get_root_dir, get_tokens_env_path, load_github_tokens
 # =========================
 # CONFIG
 # =========================
-TOKENS_ENV_PATH = get_tokens_env_path()
-ROOT_DIR = get_root_dir()
+TOKENS_ENV_PATH = Path(r"C:\GitHub\Android-Mobile-Apps\All_Tokens.env")
+ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
 
 IN_RUN_METRICS_CSV = ROOT_DIR / "run_metrics_v16_stage3_enhanced.csv"
-IN_RUN_STEPS_CSV   = ROOT_DIR / "run_steps_v16_stage3_breakdown.csv"
+IN_RUN_STEPS_CSV = ROOT_DIR / "run_steps_v16_stage3_breakdown.csv"
 
 OUT_STAGE4_SIGNATURE_CSV = ROOT_DIR / "run_workload_signature_v3.csv"
 
@@ -69,35 +80,38 @@ BACKOFF_BASE_S = 1.7
 BACKOFF_CAP_S = 60
 MAX_PAGES_PER_LIST = 2000
 
-# YAML fetching (for declared step counts + runs-on fallback)
 FETCH_WORKFLOW_YAML = True
 WORKFLOW_YAML_CACHE_MAX = 5000
 
-# Artifact parsing (to get junit_cases)
 DOWNLOAD_AND_PARSE_ARTIFACTS = True
-MAX_ARTIFACT_ZIP_BYTES = 15 * 1024 * 1024   # 15MB cap
+MAX_ARTIFACT_ZIP_BYTES = 15 * 1024 * 1024
 MAX_ARTIFACTS_TO_PARSE = 3
-MAX_XMLS_PER_ARTIFACT = 40   # slightly higher than before (still bounded)
+MAX_XMLS_PER_ARTIFACT = 40
 
 # =========================
 # Helpers
 # =========================
 BOM = "\ufeff"
 GHA_EXPR_RE = re.compile(r"\${{\s*[^}]+}}", re.MULTILINE)
+FULL_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
 
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
 def safe_lower(s: str) -> str:
     return (s or "").strip().lower()
+
 
 def _clean_key(k: str) -> str:
     return (k or "").replace(BOM, "").strip()
 
+
 def read_csv_rows(path: Path) -> Tuple[List[Dict[str, str]], List[str]]:
     if not path.exists():
         raise FileNotFoundError(f"Missing input CSV: {path}")
-    with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
+    with path.open("r", encoding="utf-8-sig", errors="ignore", newline="") as f:
         rdr = csv.DictReader(f)
         raw_fields = rdr.fieldnames or []
         fields = [_clean_key(x) for x in raw_fields]
@@ -109,20 +123,48 @@ def read_csv_rows(path: Path) -> Tuple[List[Dict[str, str]], List[str]]:
             rows.append(row)
     return rows, fields
 
+
 def write_csv(path: Path, fieldnames: List[str], rows: List[Dict[str, str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as f:
+    with path.open("w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         w.writeheader()
         for r in rows:
             w.writerow(r)
 
+
 def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
-    """CI-safe token loader.
-    - In GitHub Actions, reads GH_PAT/GITHUB_TOKEN from environment.
-    - Locally, will also read from env_path if it exists.
     """
-    return load_github_tokens(env_path=env_path, max_tokens=max_tokens)
+    Accept both:
+    - GITHUB_TOKEN=...
+    - GITHUB_TOKEN_1=...
+    - GITHUB_TOKEN_2=...
+    etc.
+    """
+    if not env_path.exists():
+        raise FileNotFoundError(f"Tokens env file not found: {env_path}")
+
+    tokens: List[str] = []
+    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if not v:
+            continue
+        if k == "GITHUB_TOKEN" or k.startswith("GITHUB_TOKEN_"):
+            tokens.append(v)
+            if len(tokens) >= max_tokens:
+                break
+
+    if not tokens:
+        raise ValueError(
+            f"No tokens found in {env_path}. Expected keys like GITHUB_TOKEN=... or GITHUB_TOKEN_1=..."
+        )
+    return tokens
+
 
 def first_nonempty(row: Dict[str, str], keys: List[str]) -> str:
     for k in keys:
@@ -131,11 +173,8 @@ def first_nonempty(row: Dict[str, str], keys: List[str]) -> str:
             return v
     return ""
 
+
 def to_int_loose(x: str, default: int = 0) -> int:
-    """
-    Loose numeric parsing for counters that might come as floats/strings.
-    Returns default if empty/non-numeric.
-    """
     s = (x or "").strip()
     if not s or s.lower() in {"nan", "none"}:
         return default
@@ -144,21 +183,12 @@ def to_int_loose(x: str, default: int = 0) -> int:
     except Exception:
         return default
 
-def parse_int_strict(s: str) -> Optional[int]:
-    """
-    Return int if string is clearly numeric; reject dates/timestamps/iso strings.
 
-    Minimal formatting fix:
-    - Accept comma/underscore formatted ints: "1,234", "1_234"
-    - Accept integer-ish floats: "8.0"
-    - Accept job-count strings with one number: "8 jobs", "jobs=8", "total_jobs: 8"
-    - Still rejects datetime-like strings.
-    """
+def parse_int_strict(s: str) -> Optional[int]:
     s = (s or "").strip()
     if not s:
         return None
 
-    # reject obvious ISO/datetime formats
     if re.search(r"\d{4}-\d{2}-\d{2}", s):
         return None
     if re.search(r"T\d{2}:\d{2}:\d{2}", s):
@@ -166,24 +196,20 @@ def parse_int_strict(s: str) -> Optional[int]:
     if re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", s):
         return None
 
-    # normalize thousands separators
     s2 = s.replace(",", "").replace("_", "").strip()
 
-    # accept digits only
     if re.fullmatch(r"\d+", s2):
         try:
             return int(s2)
         except Exception:
             return None
 
-    # accept digits with decimal .0
     if re.fullmatch(r"\d+\.0+", s2):
         try:
             return int(float(s2))
         except Exception:
             return None
 
-    # accept a single number embedded in a job-count-looking string
     low = s2.lower()
     if any(k in low for k in ["job", "jobs", "total_jobs", "jobs_total", "job_count", "jobs_count"]):
         nums = re.findall(r"\d+", s2)
@@ -195,17 +221,38 @@ def parse_int_strict(s: str) -> Optional[int]:
 
     return None
 
+
 def sanitize_gha_expr(text: str) -> str:
     if not text:
         return ""
     return GHA_EXPR_RE.sub("MATRIX", text)
 
-# --- ONLY ADDITION (no other changes): stable job identity to avoid job_name collisions in fallback counting ---
+
+def normalize_full_name(v: str) -> str:
+    v = (v or "").strip().replace(BOM, "")
+    if not v:
+        return ""
+
+    m = re.search(r"github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)", v)
+    if m:
+        return f"{m.group(1)}/{m.group(2)}"
+
+    if FULL_NAME_RE.match(v):
+        return v
+
+    v2 = v.replace(":", "/").replace("\\", "/").strip()
+    if FULL_NAME_RE.match(v2):
+        return v2
+
+    parts = [p for p in re.split(r"[\s/]+", v2) if p]
+    if len(parts) >= 2:
+        cand = f"{parts[-2]}/{parts[-1]}"
+        if FULL_NAME_RE.match(cand):
+            return cand
+    return ""
+
+
 def _job_identity_from_step_row(s: Dict[str, str]) -> str:
-    """
-    Prefer stable identifiers to avoid collapsing matrix jobs that share job_name.
-    Falls back to the same fields you already have, but in a safer priority order.
-    """
     job_id = (s.get("job_id") or "").strip()
     if job_id:
         return f"id:{job_id}"
@@ -214,7 +261,14 @@ def _job_identity_from_step_row(s: Dict[str, str]) -> str:
     if job_url:
         return f"url:{job_url}"
 
-    job_ordinal = (s.get("job_ordinal_in_run") or s.get("job_ordinal") or s.get("job_index") or s.get("job_number") or s.get("job_position") or "").strip()
+    job_ordinal = (
+        s.get("job_ordinal_in_run")
+        or s.get("job_ordinal")
+        or s.get("job_index")
+        or s.get("job_number")
+        or s.get("job_position")
+        or ""
+    ).strip()
     if job_ordinal:
         return f"ord:{job_ordinal}"
 
@@ -226,33 +280,36 @@ def _job_identity_from_step_row(s: Dict[str, str]) -> str:
 
     return ""
 
-# -------------------------
-# full_name normalization
-# -------------------------
-FULL_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
-def normalize_full_name(v: str) -> str:
-    v = (v or "").strip().replace(BOM, "")
-    if not v:
-        return ""
-    # If URL, extract owner/repo
-    m = re.search(r"github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)", v)
-    if m:
-        return f"{m.group(1)}/{m.group(2)}"
-    # If already owner/repo
-    if FULL_NAME_RE.match(v):
-        return v
-    # If "owner repo" or "owner:repo"
-    v2 = v.replace(":", "/").replace("\\", "/").strip()
-    if FULL_NAME_RE.match(v2):
-        return v2
-    # Last resort: try splitting
-    parts = [p for p in re.split(r"[\s/]+", v2) if p]
-    if len(parts) >= 2:
-        cand = f"{parts[-2]}/{parts[-1]}"
-        if FULL_NAME_RE.match(cand):
-            return cand
-    return ""
+def _step_identity_from_step_row(s: Dict[str, str]) -> str:
+    """
+    Deduplicate Stage 3 run×style step rows back to executed-step level.
+    """
+    job_ident = _job_identity_from_step_row(s)
+    step_name = (s.get("step_name") or "").strip()
+    started_at = (s.get("started_at") or "").strip()
+    completed_at = (s.get("completed_at") or "").strip()
+    duration_seconds = (s.get("duration_seconds") or "").strip()
+    step_ordinal_in_job = (s.get("step_ordinal_in_job") or "").strip()
+
+    if job_ident or step_name or started_at or completed_at or step_ordinal_in_job:
+        return "||".join([
+            job_ident,
+            step_ordinal_in_job,
+            step_name,
+            started_at,
+            completed_at,
+            duration_seconds,
+        ])
+
+    return "||".join([
+        (s.get("job_name") or "").strip(),
+        step_name,
+        started_at,
+        completed_at,
+        duration_seconds,
+    ])
+
 
 # -------------------------
 # Bucketing
@@ -269,6 +326,7 @@ def bucket_runner_os(os_raw: str) -> str:
         return "unknown"
     return "mixed_or_unknown"
 
+
 def bucket_job_count(n: Optional[int]) -> str:
     if n is None:
         return "unknown"
@@ -279,6 +337,7 @@ def bucket_job_count(n: Optional[int]) -> str:
     if 4 <= n <= 6:
         return "4_6"
     return ">6"
+
 
 def bucket_step_count(n: Optional[int]) -> str:
     if n is None:
@@ -291,6 +350,7 @@ def bucket_step_count(n: Optional[int]) -> str:
         return "41_80"
     return ">80"
 
+
 def bucket_suite_size(n: Optional[int]) -> str:
     if n is None or n <= 0:
         return "unknown"
@@ -302,6 +362,7 @@ def bucket_suite_size(n: Optional[int]) -> str:
         return "501_2000"
     return ">2000"
 
+
 # =========================
 # GitHub API client
 # =========================
@@ -311,13 +372,14 @@ class TokenState:
     remaining: Optional[int] = None
     reset_epoch: Optional[int] = None
 
+
 class GitHubClient:
     def __init__(self, tokens: List[str]) -> None:
         self.session = requests.Session()
         self.session.headers.update({
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "stage4-signature-min-fixed/1.2",
+            "User-Agent": "stage4-signature-current-plan/1.0",
         })
         self.tokens = [TokenState(t) for t in tokens]
 
@@ -357,7 +419,13 @@ class GitHubClient:
             st = self.tokens[idx]
             self.session.headers["Authorization"] = f"Bearer {st.token}"
             try:
-                resp = self.session.request(method, url, params=params, timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S), stream=stream)
+                resp = self.session.request(
+                    method,
+                    url,
+                    params=params,
+                    timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S),
+                    stream=stream,
+                )
             except requests.exceptions.RequestException:
                 self._backoff(attempt)
                 continue
@@ -431,6 +499,7 @@ class GitHubClient:
                 return
             page += 1
 
+
 # =========================
 # GitHub endpoints
 # =========================
@@ -451,9 +520,11 @@ def fetch_workflow_yaml(gh: GitHubClient, full_name: str, workflow_path: str, re
             return resp.text or ""
     return ""
 
+
 def list_run_artifacts(gh: GitHubClient, full_name: str, run_id: int) -> List[Dict]:
     url = f"https://api.github.com/repos/{full_name}/actions/runs/{run_id}/artifacts"
     return list(gh.paginate(url, params={}, item_key="artifacts"))
+
 
 def download_artifact_zip(gh: GitHubClient, full_name: str, artifact_id: int) -> Optional[bytes]:
     url = f"https://api.github.com/repos/{full_name}/actions/artifacts/{artifact_id}/zip"
@@ -472,16 +543,11 @@ def download_artifact_zip(gh: GitHubClient, full_name: str, artifact_id: int) ->
         return None
     return bytes(data)
 
+
 # =========================
-# Declared step counting (conservative)
+# Declared step counting
 # =========================
 def count_declared_steps_from_yaml(yaml_text: str) -> Optional[int]:
-    """
-    Conservative YAML step count:
-    - Does NOT expand matrix
-    - Does NOT follow reusable workflows
-    - Counts only literal list items under "steps:" blocks
-    """
     if not yaml_text or not yaml_text.strip():
         return None
     y = sanitize_gha_expr(yaml_text)
@@ -510,12 +576,8 @@ def count_declared_steps_from_yaml(yaml_text: str) -> Optional[int]:
             i += 1
     return total_steps if total_steps > 0 else None
 
+
 def parse_runs_on_from_yaml(yaml_text: str) -> str:
-    """
-    Very simple runs-on detector:
-    - collects values of `runs-on:` occurrences
-    - buckets them to ubuntu/macos/windows/mixed_or_unknown/unknown
-    """
     if not yaml_text or not yaml_text.strip():
         return "unknown"
     y = sanitize_gha_expr(yaml_text)
@@ -532,16 +594,17 @@ def parse_runs_on_from_yaml(yaml_text: str) -> str:
         return list(buckets)[0]
     return "mixed_or_unknown"
 
+
 # =========================
-# JUnit count parsing (bounded)
+# JUnit count parsing
 # =========================
 _JUNIT_XML_HINTS = (
     "junit", "test", "tests", "result", "results", "report", "reports",
     "androidtest", "instrumentation", "connected", "surefire", "TEST-"
 )
 
+
 def _try_parse_junit_xml_counts(xml_bytes: bytes) -> int:
-    """Return number of testcases from JUnit XML; 0 if not JUnit or cannot parse."""
     try:
         root = ET.fromstring(xml_bytes)
     except Exception:
@@ -566,11 +629,8 @@ def _try_parse_junit_xml_counts(xml_bytes: bytes) -> int:
     tcs = root.findall(".//testcase")
     return len(tcs) if tcs else 0
 
+
 def extract_junit_cases_from_artifacts(gh: GitHubClient, full_name: str, run_id: int) -> Tuple[Optional[int], str]:
-    """
-    Returns (junit_cases, source):
-      source in {artifacts, none}
-    """
     artifacts = list_run_artifacts(gh, full_name, run_id) or []
     if not artifacts:
         return None, "none"
@@ -578,9 +638,11 @@ def extract_junit_cases_from_artifacts(gh: GitHubClient, full_name: str, run_id:
     def score_name(name: str) -> int:
         n = safe_lower(name)
         score = 0
-        for kw in ["junit", "test-results", "test_results", "test-result",
-                   "androidtest", "instrumentation", "connected",
-                   "reports", "report", "results", "surefire"]:
+        for kw in [
+            "junit", "test-results", "test_results", "test-result",
+            "androidtest", "instrumentation", "connected",
+            "reports", "report", "results", "surefire"
+        ]:
             if kw in n:
                 score += 3
         return score
@@ -644,6 +706,7 @@ def extract_junit_cases_from_artifacts(gh: GitHubClient, full_name: str, run_id:
         return total_cases, "artifacts"
     return None, "none"
 
+
 # =========================
 # MAIN
 # =========================
@@ -654,22 +717,27 @@ def main() -> None:
     run_rows, _ = read_csv_rows(IN_RUN_METRICS_CSV)
     step_rows, _ = read_csv_rows(IN_RUN_STEPS_CSV)
 
-    # Index step rows by (full_name, run_id)
     steps_by_run: Dict[Tuple[str, str], List[Dict[str, str]]] = {}
+    unique_steps_by_run: Dict[Tuple[str, str], Set[str]] = {}
     jobs_by_run: Dict[Tuple[str, str], Set[str]] = {}
     runner_os_by_run: Dict[Tuple[str, str], Set[str]] = {}
 
     step_runner_keys = ["runner_os", "runs_on", "runner_labels", "runner_name", "os"]
+
     for s in step_rows:
         fn_raw = first_nonempty(s, ["full_name", "repo_full_name", "repository", "repo", "repo_name"])
         fn = normalize_full_name(fn_raw)
         rid = (s.get("run_id") or "").strip()
         if not fn or not rid:
             continue
+
         key = (fn, rid)
         steps_by_run.setdefault(key, []).append(s)
 
-        # --- ONLY CHANGE HERE: use stable identity instead of (job_id or job_name) ---
+        step_ident = _step_identity_from_step_row(s)
+        if step_ident:
+            unique_steps_by_run.setdefault(key, set()).add(step_ident)
+
         jid = _job_identity_from_step_row(s)
         if jid:
             jobs_by_run.setdefault(key, set()).add(jid)
@@ -680,18 +748,27 @@ def main() -> None:
 
     yaml_cache: Dict[Tuple[str, str, str], str] = {}
     out_rows: List[Dict[str, str]] = []
+    extracted_at_utc = now_utc_iso()
 
     for r in run_rows:
+        stage3_error = (r.get("stage3_error") or "").strip()
+        if stage3_error:
+            continue
+
         instru_job_count = to_int_loose(r.get("instru_job_count", ""), 0)
         if instru_job_count <= 0:
             continue
 
-        fn_raw = first_nonempty(r, ["full_name", "repo_full_name", "repository", "repo", "repo_name", "repo_url", "html_url"])
+        fn_raw = first_nonempty(
+            r,
+            ["full_name", "repo_full_name", "repository", "repo", "repo_name", "repo_url", "html_url"]
+        )
         full_name = normalize_full_name(fn_raw)
         run_id_s = (r.get("run_id") or "").strip()
 
         workflow_path = (r.get("workflow_path") or "").strip()
         head_sha = (r.get("head_sha") or "").strip()
+        effective_ref = first_nonempty(r, ["effective_ref_for_stage4", "head_sha"])
 
         if not full_name or not run_id_s:
             continue
@@ -705,19 +782,21 @@ def main() -> None:
         step_count_decl = None
         yaml_runner_bucket = "unknown"
 
-        if FETCH_WORKFLOW_YAML and workflow_path and head_sha:
-            ck = (full_name, workflow_path, head_sha)
+        if FETCH_WORKFLOW_YAML and workflow_path and effective_ref:
+            ck = (full_name, workflow_path, effective_ref)
             if ck in yaml_cache:
                 yaml_text = yaml_cache[ck]
             else:
-                yaml_text = fetch_workflow_yaml(gh, full_name, workflow_path, head_sha)
+                yaml_text = fetch_workflow_yaml(gh, full_name, workflow_path, effective_ref)
                 if len(yaml_cache) < WORKFLOW_YAML_CACHE_MAX:
                     yaml_cache[ck] = yaml_text
+
             has_yaml = bool((yaml_text or "").strip())
             if has_yaml:
                 step_count_decl = count_declared_steps_from_yaml(yaml_text)
                 yaml_runner_bucket = parse_runs_on_from_yaml(yaml_text)
 
+        # runner OS selection
         run_os_raw = first_nonempty(r, ["runner_os", "runs_on", "os", "runner_labels"])
         if run_os_raw:
             runner_os_bucket = bucket_runner_os(run_os_raw)
@@ -734,24 +813,24 @@ def main() -> None:
                 runner_os_bucket = yaml_runner_bucket
                 runner_os_source = "yaml" if yaml_runner_bucket != "unknown" else "unknown"
 
-        # job_count_total (parse formatted; else compute from step rows unique jobs)
+        # job count source selection
         job_count_total = None
         job_count_raw = first_nonempty(r, ["job_count_total", "jobs_total", "total_jobs", "jobs_count"])
         job_count_total = parse_int_strict(job_count_raw)
 
-        if job_count_total is None:
-            if jobs_by_run.get(run_key):
-                job_count_total = len(jobs_by_run[run_key])
+        if job_count_total is None and jobs_by_run.get(run_key):
+            job_count_total = len(jobs_by_run[run_key])
 
         job_count_total_bucket = bucket_job_count(job_count_total)
 
-        step_count_exec = len(sr_list) if has_steps_rows else None
-        step_count_exec_bucket = bucket_step_count(step_count_exec) if step_count_exec is not None else "unknown"
+        # dedup executed steps from duplicated run×style step rows
+        unique_step_count_exec = len(unique_steps_by_run.get(run_key, set())) if unique_steps_by_run.get(run_key) else None
+        step_count_exec_bucket = bucket_step_count(unique_step_count_exec) if unique_step_count_exec is not None else "unknown"
         step_count_decl_bucket = bucket_step_count(step_count_decl) if step_count_decl is not None else "unknown"
 
-        if step_count_exec is not None:
+        if unique_step_count_exec is not None:
             step_count_total_bucket = step_count_exec_bucket
-            step_count_source = "executed"
+            step_count_source = "executed_dedup"
         elif step_count_decl is not None:
             step_count_total_bucket = step_count_decl_bucket
             step_count_source = "declared"
@@ -759,6 +838,7 @@ def main() -> None:
             step_count_total_bucket = "unknown"
             step_count_source = "unknown"
 
+        # optional bounded artifact parse
         junit_cases = None
         junit_source = "none"
         if DOWNLOAD_AND_PARSE_ARTIFACTS:
@@ -766,6 +846,7 @@ def main() -> None:
                 junit_cases, junit_source = extract_junit_cases_from_artifacts(gh, full_name, int(run_id_s))
             except Exception:
                 junit_cases, junit_source = (None, "none")
+
         test_suite_size_bucket = bucket_suite_size(junit_cases)
 
         signature_inputs_parts = []
@@ -792,14 +873,13 @@ def main() -> None:
         ])
         signature_hash_full = hashlib.sha256(sig_basis_full.encode("utf-8", errors="ignore")).hexdigest()[:16]
 
-        signature_hash = signature_hash_full
-
         out_rows.append({
             "full_name": full_name,
             "run_id": run_id_s,
             "workflow_identifier": r.get("workflow_identifier", ""),
             "workflow_path": workflow_path,
             "head_sha": head_sha,
+            "effective_ref_for_stage4": effective_ref,
 
             "signature_inputs": signature_inputs,
 
@@ -809,7 +889,7 @@ def main() -> None:
             "job_count_total": str(job_count_total) if job_count_total is not None else "",
             "job_count_total_bucket": job_count_total_bucket,
 
-            "step_count_exec": str(step_count_exec) if step_count_exec is not None else "",
+            "step_count_exec": str(unique_step_count_exec) if unique_step_count_exec is not None else "",
             "step_count_exec_bucket": step_count_exec_bucket,
             "step_count_decl": str(step_count_decl) if step_count_decl is not None else "",
             "step_count_decl_bucket": step_count_decl_bucket,
@@ -824,29 +904,29 @@ def main() -> None:
             "signature_hash_base": signature_hash_base,
             "sig_basis_full": sig_basis_full,
             "signature_hash_full": signature_hash_full,
+            "signature_hash": signature_hash_full,
 
-            "signature_hash": signature_hash,
-
-            "stage4_extracted_at_utc": now_utc_iso(),
+            "stage4_extracted_at_utc": extracted_at_utc,
         })
 
     out_fields = [
-        "full_name","run_id","workflow_identifier","workflow_path","head_sha",
+        "full_name", "run_id", "workflow_identifier", "workflow_path", "head_sha", "effective_ref_for_stage4",
         "signature_inputs",
-        "runner_os_bucket","runner_os_source",
-        "job_count_total","job_count_total_bucket",
-        "step_count_exec","step_count_exec_bucket",
-        "step_count_decl","step_count_decl_bucket",
-        "step_count_source","step_count_total_bucket",
-        "junit_cases","junit_source","test_suite_size_bucket",
-        "sig_basis_base","signature_hash_base",
-        "sig_basis_full","signature_hash_full",
+        "runner_os_bucket", "runner_os_source",
+        "job_count_total", "job_count_total_bucket",
+        "step_count_exec", "step_count_exec_bucket",
+        "step_count_decl", "step_count_decl_bucket",
+        "step_count_source", "step_count_total_bucket",
+        "junit_cases", "junit_source", "test_suite_size_bucket",
+        "sig_basis_base", "signature_hash_base",
+        "sig_basis_full", "signature_hash_full",
         "signature_hash",
         "stage4_extracted_at_utc",
     ]
 
     write_csv(OUT_STAGE4_SIGNATURE_CSV, out_fields, out_rows)
-    print("[done] Stage 4 signature (Stage3-only, base+full):", OUT_STAGE4_SIGNATURE_CSV)
+    print("[done] Stage 4 signature (current study plan, Stage3-only, base+full, dedup-adjusted):", OUT_STAGE4_SIGNATURE_CSV)
+
 
 if __name__ == "__main__":
     main()

@@ -124,6 +124,7 @@ jobs:
         run: |
           test -f data/processed/verified_workflows_v16.csv
           test -f data/processed/run_inventory.csv
+          test -f data/processed/run_inventory_per_style.csv
           test -f data/processed/run_metrics_v16_stage3_enhanced.csv
           test -f data/processed/run_steps_v16_stage3_breakdown.csv
           test -f data/processed/run_per_style_v1_stage3.csv
@@ -148,6 +149,7 @@ jobs:
           git add \
             data/processed/verified_workflows_v16.csv \
             data/processed/run_inventory.csv \
+            data/processed/run_inventory_per_style.csv \
             data/processed/run_metrics_v16_stage3_enhanced.csv \
             data/processed/run_steps_v16_stage3_breakdown.csv \
             data/processed/run_per_style_v1_stage3.csv \
@@ -164,6 +166,7 @@ jobs:
             data/processed/MainDataset.csv
             data/processed/verified_workflows_v16.csv
             data/processed/run_inventory.csv
+            data/processed/run_inventory_per_style.csv
             data/processed/run_metrics_v16_stage3_enhanced.csv
             data/processed/run_steps_v16_stage3_breakdown.csv
             data/processed/run_per_style_v1_stage3.csv

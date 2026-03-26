@@ -41,9 +41,10 @@ jobs:
         run: |
           python -m pipeline.stage2_run_inventory
 
-      - name: Validate Stage 2 output exists
+      - name: Validate Stage 2 outputs exist
         run: |
           test -f data/processed/run_inventory.csv
+          test -f data/processed/run_inventory_per_style.csv
 
       - name: Commit Stage 2 output
         env:
@@ -51,12 +52,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/processed/run_inventory.csv
-          git diff --cached --quiet || git commit -m "Stage 2: run_inventory.csv"
+          git add data/processed/run_inventory.csv data/processed/run_inventory_per_style.csv
+          git diff --cached --quiet || git commit -m "Stage 2: run_inventory.csv + run_inventory_per_style.csv"
           git push
 
       - name: Upload Stage 2 artifact
         uses: actions/upload-artifact@v4
         with:
           name: stage2_run_inventory
-          path: data/processed/run_inventory.csv
+          path: |
+            data/processed/run_inventory.csv
+            data/processed/run_inventory_per_style.csv
