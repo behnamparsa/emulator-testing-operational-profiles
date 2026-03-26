@@ -2429,7 +2429,7 @@ per_style_fields = [
 # Main
 # =========================
 def main():
-    tokens = read_env_tokens(TOKENS_ENV_PATH)
+    tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
     gh = GitHubClient(tokens=tokens)
 
     run_rows = read_csv_rows(IN_STAGE2_RUN_CSV)

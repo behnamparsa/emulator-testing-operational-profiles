@@ -5,6 +5,9 @@ on:
   # schedule:
   #   - cron: '0 9 * * 1'  # optional later
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
 
@@ -15,10 +18,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -58,7 +61,7 @@ jobs:
           git push
 
       - name: Upload Stage 1 artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: stage1_verified_workflows
           path: data/processed/verified_workflows_v16.csv

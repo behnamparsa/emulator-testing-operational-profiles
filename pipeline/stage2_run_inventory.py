@@ -1228,7 +1228,7 @@ def main() -> None:
     if OUT_RUN_PER_STYLE_CSV.exists():
         OUT_RUN_PER_STYLE_CSV.unlink()
 
-    tokens = read_env_tokens(TOKENS_ENV_PATH)
+    tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
     gh = GitHubClient(tokens)
 
     rows = load_verified_workflows(IN_VERIFIED_WORKFLOWS_CSV)
