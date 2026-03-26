@@ -63,6 +63,7 @@ ROOT_DIR = get_root_dir()
 
 IN_VERIFIED_WORKFLOWS_CSV = ROOT_DIR / "verified_workflows_v16.csv"
 OUT_RUN_INVENTORY_CSV = ROOT_DIR / "run_inventory.csv"
+OUT_RUN_PER_STYLE_CSV = ROOT_DIR / "run_inventory_per_style.csv"
 
 DEFAULT_BRANCH_ONLY = True
 PROCESS_ONLY_LOOKS_LIKE_INSTRU = True
@@ -152,6 +153,41 @@ def safe_join_names(names: List[str], max_len: int = 700) -> str:
     if len(s) <= max_len:
         return s
     return s[: max_len - 3] + "..."
+
+
+STYLE_CANONICAL = ["Community", "Custom", "GMD", "Third-Party", "Real-Device"]
+STYLE_ALIASES = {
+    "community": "Community",
+    "custom": "Custom",
+    "gmd": "GMD",
+    "third party": "Third-Party",
+    "third-party": "Third-Party",
+    "third_party": "Third-Party",
+    "thirdparty": "Third-Party",
+    "3p": "Third-Party",
+    "real device": "Real-Device",
+    "real-device": "Real-Device",
+    "real_device": "Real-Device",
+    "realdevice": "Real-Device",
+}
+
+def canon_key(s: Optional[str]) -> str:
+    x = (s or "").strip().lower()
+    x = x.replace("_", " ").replace("-", " ")
+    x = re.sub(r"\s+", " ", x).strip()
+    return x
+
+def normalize_style_label(s: Optional[str]) -> str:
+    raw = (s or "").strip()
+    return STYLE_ALIASES.get(canon_key(raw), raw)
+
+def split_styles_csv_value(s: Optional[str]) -> List[str]:
+    raw = (s or "").strip()
+    if not raw:
+        return []
+    parts = [normalize_style_label(x) for x in re.split(r"[|,;/]+", raw) if str(x).strip()]
+    return unique_preserve([p for p in parts if p])
+
 
 
 # =========================
@@ -703,6 +739,8 @@ def main() -> None:
 
     if OUT_RUN_INVENTORY_CSV.exists():
         OUT_RUN_INVENTORY_CSV.unlink()
+    if OUT_RUN_PER_STYLE_CSV.exists():
+        OUT_RUN_PER_STYLE_CSV.unlink()
 
     tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
     print(f"Loaded GitHub token pool size: {len(tokens)}")
@@ -714,10 +752,10 @@ def main() -> None:
 
     if not rows:
         out_run_fields = ["full_name", "workflow_identifier", "workflow_id", "workflow_path", "run_id", "run_number", "run_attempt"]
-        out_style_fields = ["full_name", "workflow_identifier", "workflow_id", "workflow_path", "run_id", "run_number", "run_attempt", "target_style"]
+        out_style_fields = out_run_fields + ["target_style"]
         ensure_csv_header(OUT_RUN_INVENTORY_CSV, out_run_fields)
         ensure_csv_header(OUT_RUN_PER_STYLE_CSV, out_style_fields)
-        print("No eligible workflows found for this shard after filtering; wrote header-only Stage 2 outputs.")
+        print("No eligible workflows found after filtering; wrote header-only Stage 2 outputs.")
         return
 
     after_dt = iso_to_dt(RUN_CREATED_AT_AFTER) if RUN_CREATED_AT_AFTER else None
@@ -818,7 +856,10 @@ def main() -> None:
         "S2_time_to_first_instru_from_anchor_job_quality",
     ]
 
+    out_style_fields = out_fields + ["target_style"]
+
     ensure_csv_header(OUT_RUN_INVENTORY_CSV, out_fields)
+    ensure_csv_header(OUT_RUN_PER_STYLE_CSV, out_style_fields)
     existing_run_ids = load_existing_keys(OUT_RUN_INVENTORY_CSV, "run_id")
 
     default_branch_cache: Dict[str, str] = {}
@@ -1028,6 +1069,103 @@ def main() -> None:
                 "S2_time_to_first_instru_from_anchor_job_seconds": "" if s2["S2_time_to_first_instru_from_anchor_job_seconds"] is None else str(s2["S2_time_to_first_instru_from_anchor_job_seconds"]),
                 "S2_time_to_first_instru_from_anchor_job_quality": s2["S2_time_to_first_instru_from_anchor_job_quality"],
             })
+
+
+            styles_for_row = split_styles_csv_value(wf.get("styles") or "")
+            if not styles_for_row:
+                styles_for_row = []
+
+            for _style in styles_for_row:
+                per_style_row = {
+                    # workflow identity
+                    "full_name": full_name,
+                    "default_branch": default_branch,
+                    "workflow_identifier": workflow_identifier,
+                    "workflow_id": workflow_id,
+                    "workflow_path": workflow_path,
+
+                    # workflow labels from Stage 1
+                    "looks_like_instru": (wf.get("looks_like_instru") or ""),
+                    "styles": (wf.get("styles") or ""),
+                    "invocation_types": (wf.get("invocation_types") or ""),
+                    "third_party_provider_name": (wf.get("third_party_provider_name") or ""),
+                    "test_invocation_step_names": (wf.get("test_invocation_step_names") or ""),
+
+                    "jobs_before_anchor_count": (wf.get("jobs_before_anchor_count") or ""),
+
+                    "called_instru_signal": (wf.get("called_instru_signal") or ""),
+                    "called_instru_file_paths": (wf.get("called_instru_file_paths") or ""),
+                    "called_instru_origin_refs": (wf.get("called_instru_origin_refs") or ""),
+                    "called_instru_origin_step_names": (wf.get("called_instru_origin_step_names") or ""),
+                    "called_instru_file_types": (wf.get("called_instru_file_types") or ""),
+
+                    "run_id": run_id,
+                    "run_number": run.get("run_number") or "",
+                    "run_attempt": run.get("run_attempt") or "",
+                    "head_sha": head_sha,
+                    "created_at": created_at,
+                    "run_started_at": run_started_at,
+                    "status": run.get("status") or "",
+                    "run_conclusion": run.get("conclusion") or "",
+                    "event": run.get("event") or "",
+                    "head_branch": head_branch,
+                    "html_url": run.get("html_url") or "",
+                    "extracted_at_utc": now_utc_iso(),
+
+                    "queue_seconds": "" if metrics["queue_seconds"] is None else str(metrics["queue_seconds"]),
+                    "time_to_first_instru_seconds": "" if metrics["time_to_first_instru_seconds"] is None else str(metrics["time_to_first_instru_seconds"]),
+                    "instru_conclusion": metrics["instru_conclusion"],
+                    "instru_detect_method": metrics["instru_detect_method"],
+                    "instru_duration_seconds": "" if metrics["instru_duration_seconds"] is None else str(metrics["instru_duration_seconds"]),
+                    "run_duration_seconds": "" if metrics["run_duration_seconds"] is None else str(metrics["run_duration_seconds"]),
+                    "runner_labels_union": metrics["runner_labels_union"],
+                    "instru_job_count": str(metrics["instru_job_count"]),
+                    "instru_step_count": str(metrics["instru_step_count"]),
+                    "instru_job_names": metrics["instru_job_names"],
+                    "instru_step_names": metrics["instru_step_names"],
+                    "instru_total_seconds": "" if metrics["instru_total_seconds"] is None else str(metrics["instru_total_seconds"]),
+                    "instru_window_seconds": "" if metrics["instru_window_seconds"] is None else str(metrics["instru_window_seconds"]),
+                    "instru_first_started_at": metrics["instru_first_started_at"],
+                    "instru_last_completed_at": metrics["instru_last_completed_at"],
+                    "instru_share_of_run": "" if metrics["instru_share_of_run"] is None else str(metrics["instru_share_of_run"]),
+
+                    "anchor_job_name": metrics["anchor_job_name"],
+                    "anchor_job_started_at": metrics["anchor_job_started_at"],
+                    "anchor_job_start_source": metrics["anchor_job_start_source"],
+                    "time_to_first_instru_from_anchor_job_seconds": "" if metrics["time_to_first_instru_from_anchor_job_seconds"] is None else str(metrics["time_to_first_instru_from_anchor_job_seconds"]),
+                    "time_to_first_instru_from_anchor_job_quality": metrics["time_to_first_instru_from_anchor_job_quality"],
+
+                    "S2_run_started_at_jobs_min": s2_run_start,
+                    "S2_run_ended_at_jobs_max": s2_run_end,
+                    "S2_run_duration_seconds_jobs_window": "" if s2_run_dur is None else str(s2_run_dur),
+                    "S2_run_timing_source": s2_run_src,
+
+                    "S2_queue_seconds": "" if s2["S2_queue_seconds"] is None else str(s2["S2_queue_seconds"]),
+                    "S2_time_to_first_instru_seconds": "" if s2["S2_time_to_first_instru_seconds"] is None else str(s2["S2_time_to_first_instru_seconds"]),
+                    "S2_instru_conclusion": s2["S2_instru_conclusion"],
+                    "S2_instru_detect_method": s2["S2_instru_detect_method"],
+                    "S2_instru_duration_seconds": "" if s2["S2_instru_duration_seconds"] is None else str(s2["S2_instru_duration_seconds"]),
+                    "S2_run_duration_seconds": "" if s2["S2_run_duration_seconds"] is None else str(s2["S2_run_duration_seconds"]),
+                    "S2_runner_labels_union": s2["S2_runner_labels_union"],
+                    "S2_instru_job_count": "" if s2["S2_instru_job_count"] is None else str(s2["S2_instru_job_count"]),
+                    "S2_instru_step_count": "" if s2["S2_instru_step_count"] is None else str(s2["S2_instru_step_count"]),
+                    "S2_instru_job_names": s2["S2_instru_job_names"],
+                    "S2_instru_step_names": s2["S2_instru_step_names"],
+                    "S2_instru_total_seconds": "" if s2["S2_instru_total_seconds"] is None else str(s2["S2_instru_total_seconds"]),
+                    "S2_instru_window_seconds": "" if s2["S2_instru_window_seconds"] is None else str(s2["S2_instru_window_seconds"]),
+                    "S2_instru_first_started_at": s2["S2_instru_first_started_at"],
+                    "S2_instru_last_completed_at": s2["S2_instru_last_completed_at"],
+                    "S2_instru_share_of_run": "" if s2["S2_instru_share_of_run"] is None else str(s2["S2_instru_share_of_run"]),
+
+                    "S2_anchor_job_name": s2["S2_anchor_job_name"],
+                    "S2_anchor_job_started_at": s2["S2_anchor_job_started_at"],
+                    "S2_anchor_job_start_source": s2["S2_anchor_job_start_source"],
+                    "S2_time_to_first_instru_from_anchor_job_seconds": "" if s2["S2_time_to_first_instru_from_anchor_job_seconds"] is None else str(s2["S2_time_to_first_instru_from_anchor_job_seconds"]),
+                    "S2_time_to_first_instru_from_anchor_job_quality": s2["S2_time_to_first_instru_from_anchor_job_quality"],
+
+                    "target_style": _style,
+                }
+                append_row(OUT_RUN_PER_STYLE_CSV, out_style_fields, per_style_row)
 
             existing_run_ids.add(run_id)
 

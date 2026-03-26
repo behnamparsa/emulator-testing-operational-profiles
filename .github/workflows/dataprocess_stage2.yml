@@ -49,6 +49,19 @@ jobs:
         run: |
           python -m pipeline.stage2_run_inventory
 
+      - name: Inspect Stage 2 outputs
+        if: always()
+        run: |
+          echo "run_inventory.csv lines:"
+          wc -l data/processed/run_inventory.csv || true
+          echo "run_inventory_per_style.csv lines:"
+          wc -l data/processed/run_inventory_per_style.csv || true
+          echo "run_inventory.csv preview:"
+          sed -n '1,10p' data/processed/run_inventory.csv || true
+          echo "run_inventory_per_style.csv preview:"
+          sed -n '1,10p' data/processed/run_inventory_per_style.csv || true
+
+
       - name: Validate Stage 2 outputs exist
         run: |
           test -f data/processed/run_inventory.csv
@@ -65,9 +78,11 @@ jobs:
           git push
 
       - name: Upload Stage 2 artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: stage2_run_inventory
           path: |
             data/processed/run_inventory.csv
             data/processed/run_inventory_per_style.csv
+
+
