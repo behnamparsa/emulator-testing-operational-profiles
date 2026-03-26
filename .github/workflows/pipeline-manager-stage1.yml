@@ -36,19 +36,19 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Validate Stage 1 input
+      - name: Validate URL list exists
         run: |
           test -f "${{ inputs.url_list_path }}"
-          echo "Stage 1 input file:"
+          echo "Stage 1 input:"
           ls -l "${{ inputs.url_list_path }}"
-          echo "Stage 1 input line count:"
+          echo "Stage 1 input lines:"
           wc -l "${{ inputs.url_list_path }}" || true
           echo "Stage 1 input preview:"
           sed -n '1,10p' "${{ inputs.url_list_path }}" || true
@@ -69,7 +69,7 @@ jobs:
           find data/processed/stage1_shards -maxdepth 2 -type f | sort || true
 
       - name: Upload Stage 1 shard definitions
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: stage1-definitions
           path: data/processed/stage1_shards
@@ -127,7 +127,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
@@ -135,7 +135,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Download Stage 1 shard outputs
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: stage1-shard-*
           path: data/processed/stage1_shards_downloaded
@@ -161,7 +161,13 @@ jobs:
           echo "Stage 1 merged preview:"
           sed -n '1,10p' data/processed/verified_workflows_v16.csv || true
 
+      - name: Validate Stage 1 output exists
+        run: |
+          test -f data/processed/verified_workflows_v16.csv
+
       - name: Commit Stage 1 output
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -170,7 +176,7 @@ jobs:
           git push
 
       - name: Upload Stage 1 artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
-          name: stage1
+          name: stage1_verified_workflows
           path: data/processed/verified_workflows_v16.csv
