@@ -21,6 +21,7 @@ jobs:
   run-shard:
     runs-on: ubuntu-latest
     timeout-minutes: 260
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -35,35 +36,42 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Download stage 3 shard definitions
-        uses: actions/download-artifact@v6
+      - name: Download Stage 3 shard definitions
+        uses: actions/download-artifact@v8
         with:
-          name: stage3-shard-definitions
+          name: stage3-definitions
           path: stage3-shard-definitions
 
-      - name: Prepare stage 3 shard root
+      - name: Prepare Stage 3 shard root
         run: |
+          rm -rf "${{ inputs.shard_root }}/${{ inputs.shard_id }}"
           mkdir -p "${{ inputs.shard_root }}/${{ inputs.shard_id }}"
-          cp "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory.csv" "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv"
-          cp "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory_per_style.csv" "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv"
+          cp "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory.csv" \
+             "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv"
+          cp "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory_per_style.csv" \
+             "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv"
+
           echo "Stage 3 driver lines:"
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv" || true
           echo "Stage 3 reference lines:"
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv" || true
+          echo "Stage 3 driver preview:"
+          sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv" || true
 
       - name: Run Stage 3
         env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GITHUB_TOKEN: ${{ github.token }}
           GH_PAT_1: ${{ secrets.GH_PAT_1 }}
           GH_PAT_2: ${{ secrets.GH_PAT_2 }}
           GH_PAT_3: ${{ secrets.GH_PAT_3 }}
           GH_PAT_4: ${{ secrets.GH_PAT_4 }}
           GH_PAT_5: ${{ secrets.GH_PAT_5 }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
           ROOT_DIR: ${{ github.workspace }}/${{ inputs.shard_root }}/${{ inputs.shard_id }}
-        run: python -m pipeline.stage3_run_telemetry
+        run: |
+          python -m pipeline.stage3_run_telemetry
 
-      - name: Check Stage 3 outputs
+      - name: Inspect Stage 3 outputs
         if: always()
         run: |
           echo "run_metrics lines:"
@@ -72,12 +80,21 @@ jobs:
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv" || true
           echo "run_per_style lines:"
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv" || true
+          echo "Shard folder contents:"
+          find "${{ inputs.shard_root }}/${{ inputs.shard_id }}" -maxdepth 3 -print || true
+
+      - name: Validate Stage 3 outputs exist
+        run: |
+          test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_metrics_v16_stage3_enhanced.csv"
+          test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv"
+          test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv"
 
       - name: Upload Stage 3 shard outputs
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
-          name: stage3-${{ inputs.shard_id }}
+          name: stage3-shard-${{ inputs.shard_id }}
           path: |
             ${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_metrics_v16_stage3_enhanced.csv
             ${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv
             ${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv
+          if-no-files-found: error
