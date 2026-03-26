@@ -1,7 +1,9 @@
-name: DataProcess Stage 4 - Signature Only
+name: Stage 1 - Single-Run Workflow Mining
 
 on:
   workflow_dispatch:
+  # schedule:
+  #   - cron: '0 9 * * 1'  # optional later
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -10,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  stage4:
+  stage1:
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
@@ -32,13 +34,11 @@ jobs:
         run: |
           mkdir -p data/processed
 
-      - name: Validate Stage 3 inputs exist
+      - name: Validate URL list exists
         run: |
-          test -f data/processed/run_metrics_v16_stage3_enhanced.csv
-          test -f data/processed/run_steps_v16_stage3_breakdown.csv
-          test -f data/processed/run_per_style_v1_stage3.csv
+          test -f data/processed/URL_List.csv
 
-      - name: Run Stage 4
+      - name: Run Stage 1 (verified workflows)
         env:
           GH_PAT_1: ${{ secrets.GH_PAT_1 }}
           GH_PAT_2: ${{ secrets.GH_PAT_2 }}
@@ -49,32 +49,24 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           ROOT_DIR: ${{ github.workspace }}/data/processed
         run: |
-          python -m pipeline.stage4_workload_signature
+          python -m pipeline.stage1_verified_workflows
 
-      - name: Inspect Stage 4 output
-        if: always()
+      - name: Validate Stage 1 output exists
         run: |
-          echo "run_workload_signature_v3.csv lines:"
-          wc -l data/processed/run_workload_signature_v3.csv || true
-          echo "run_workload_signature_v3.csv preview:"
-          sed -n '1,10p' data/processed/run_workload_signature_v3.csv || true
+          test -f data/processed/verified_workflows_v16.csv
 
-      - name: Validate Stage 4 output exists
-        run: |
-          test -f data/processed/run_workload_signature_v3.csv
-
-      - name: Commit Stage 4 output
+      - name: Commit Stage 1 output
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/processed/run_workload_signature_v3.csv
-          git diff --cached --quiet || git commit -m "Stage 4: run_workload_signature_v3.csv"
+          git add data/processed/verified_workflows_v16.csv
+          git diff --cached --quiet || git commit -m "Stage 1: verified_workflows_v16.csv"
           git push
 
-      - name: Upload Stage 4 artifact
-        uses: actions/upload-artifact@v7
+      - name: Upload Stage 1 artifact
+        uses: actions/upload-artifact@v6
         with:
-          name: stage4
-          path: data/processed/run_workload_signature_v3.csv
+          name: stage1_verified_workflows
+          path: data/processed/verified_workflows_v16.csv

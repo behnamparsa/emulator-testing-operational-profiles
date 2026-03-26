@@ -1,4 +1,5 @@
-name: Stage 2 Shard
+name: Stage 2 - Shard Worker
+
 
 on:
   workflow_call:

@@ -1,4 +1,4 @@
-name: DataProcess Stage 3 - Telemetry + Per-Style + Steps
+name: Stage 3 - Single-Run Telemetry Extraction
 
 on:
   workflow_dispatch:

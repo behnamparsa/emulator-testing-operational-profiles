@@ -1,4 +1,4 @@
-name: DataProcess Stage 2 - Run Inventory
+name: Stage 2 - Single-Run Run Inventory
 
 on:
   workflow_dispatch:

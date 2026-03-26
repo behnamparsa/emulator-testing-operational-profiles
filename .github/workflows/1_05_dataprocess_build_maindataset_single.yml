@@ -1,4 +1,4 @@
-name: Pipeline Manager Build MainDataset
+name: Build - Single-Run MainDataset
 
 on:
   workflow_dispatch:

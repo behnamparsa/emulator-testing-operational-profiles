@@ -1,4 +1,4 @@
-name: Pipeline Manager Stage 3
+name: Stage 3 - Sharded Manager
 
 on:
   workflow_dispatch:
@@ -99,7 +99,7 @@ jobs:
       max-parallel: ${{ fromJson(inputs.max_parallel) }}
       matrix: ${{ fromJson(needs.prepare-stage3-shards.outputs.shard_matrix) }}
 
-    uses: ./.github/workflows/stage3-shard.yml
+    uses: ./.github/workflows/2_03_dataprocess_stage3_shard_worker.yml
     with:
       shard_id: ${{ matrix.shard_id }}
     secrets: inherit
