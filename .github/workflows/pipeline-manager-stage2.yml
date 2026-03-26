@@ -151,6 +151,9 @@ jobs:
             --output-dir data/processed \
             --file run_inventory.csv
 
+      - name: Inspect aggregated run_inventory.csv
+        if: always()
+        run: |
           echo "Stage 2 merged run_inventory rows:"
           wc -l data/processed/run_inventory.csv || true
           echo "Stage 2 merged run_inventory preview:"
@@ -164,6 +167,9 @@ jobs:
             --output-dir data/processed \
             --file run_inventory_per_style.csv
 
+      - name: Inspect aggregated run_inventory_per_style.csv
+        if: always()
+        run: |
           echo "Stage 2 merged run_inventory_per_style rows:"
           wc -l data/processed/run_inventory_per_style.csv || true
           echo "Stage 2 merged run_inventory_per_style preview:"
