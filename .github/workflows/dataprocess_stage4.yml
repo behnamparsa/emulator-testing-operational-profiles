@@ -36,6 +36,7 @@ jobs:
         run: |
           test -f data/processed/run_metrics_v16_stage3_enhanced.csv
           test -f data/processed/run_steps_v16_stage3_breakdown.csv
+          test -f data/processed/run_per_style_v1_stage3.csv
 
       - name: Run Stage 4
         env:
@@ -50,6 +51,18 @@ jobs:
         run: |
           python -m pipeline.stage4_workload_signature
 
+      - name: Inspect Stage 4 output
+        if: always()
+        run: |
+          echo "run_workload_signature_v3.csv lines:"
+          wc -l data/processed/run_workload_signature_v3.csv || true
+          echo "run_workload_signature_v3.csv preview:"
+          sed -n '1,10p' data/processed/run_workload_signature_v3.csv || true
+
+      - name: Validate Stage 4 output exists
+        run: |
+          test -f data/processed/run_workload_signature_v3.csv
+
       - name: Commit Stage 4 output
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -59,3 +72,9 @@ jobs:
           git add data/processed/run_workload_signature_v3.csv
           git diff --cached --quiet || git commit -m "Stage 4: run_workload_signature_v3.csv"
           git push
+
+      - name: Upload Stage 4 artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: stage4
+          path: data/processed/run_workload_signature_v3.csv
