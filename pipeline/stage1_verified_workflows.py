@@ -138,14 +138,17 @@ def safe_join_pipe(items: List[str], max_len: int = 3000) -> str:
 
 
 def external_repo_tokens() -> List[Optional[str]]:
-    """For cross-repo scans, prefer a PAT and otherwise fall back to
-    unauthenticated requests for public repositories. Avoid using the current
-    repo's GITHUB_TOKEN for external workflow discovery.
+    """Preferred cross-repo auth pool for workflow discovery.
+    Uses GH_PAT_1..GH_PAT_5 first, then GH_PAT, and finally unauthenticated fallback for public repos.
+    Avoids using the current repo's GITHUB_TOKEN for external workflow discovery.
     """
-    gh_pat = (os.environ.get("GH_PAT") or "").strip()
-    if gh_pat:
-        return [gh_pat, None]
-    return [None]
+    toks: List[Optional[str]] = []
+    for key in ["GH_PAT_1", "GH_PAT_2", "GH_PAT_3", "GH_PAT_4", "GH_PAT_5", "GH_PAT"]:
+        val = (os.environ.get(key) or "").strip()
+        if val and val not in toks:
+            toks.append(val)
+    toks.append(None)
+    return toks
 
 def parse_repo_full_name(url: str) -> str:
     u = (url or "").strip()

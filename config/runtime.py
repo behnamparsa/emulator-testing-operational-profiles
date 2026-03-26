@@ -26,6 +26,7 @@ def get_tokens_env_path() -> Path:
 def load_github_tokens(env_path: Optional[Path] = None, max_tokens: int = 3) -> List[str]:
     tokens: List[str] = []
 
+    # Preferred cross-repo PAT pool for Actions and local runs.
     for key in ["GH_PAT", "GITHUB_TOKEN"]:
         val = os.getenv(key, "").strip()
         if val:
@@ -33,14 +34,23 @@ def load_github_tokens(env_path: Optional[Path] = None, max_tokens: int = 3) -> 
 
     numbered = []
     for key, value in os.environ.items():
-        if key.startswith("GITHUB_TOKEN_") and value.strip():
+        sval = value.strip()
+        if not sval:
+            continue
+        if key.startswith("GH_PAT_"):
             try:
                 order = int(key.split("_")[-1])
             except Exception:
                 order = 9999
-            numbered.append((order, value.strip()))
-    numbered.sort(key=lambda x: x[0])
-    tokens.extend(v for _, v in numbered)
+            numbered.append((0, order, sval))
+        elif key.startswith("GITHUB_TOKEN_"):
+            try:
+                order = int(key.split("_")[-1])
+            except Exception:
+                order = 9999
+            numbered.append((1, order, sval))
+    numbered.sort(key=lambda x: (x[0], x[1]))
+    tokens.extend(v for _, _, v in numbered)
 
     path = env_path or get_tokens_env_path()
     if path.exists():
@@ -51,7 +61,7 @@ def load_github_tokens(env_path: Optional[Path] = None, max_tokens: int = 3) -> 
             key, value = line.split("=", 1)
             key = key.strip()
             value = value.strip().strip('"').strip("'")
-            if (key in {"GH_PAT", "GITHUB_TOKEN"} or key.startswith("GITHUB_TOKEN_")) and value:
+            if (key in {"GH_PAT", "GITHUB_TOKEN"} or key.startswith("GH_PAT_") or key.startswith("GITHUB_TOKEN_")) and value:
                 tokens.append(value)
 
     # de-duplicate, preserve order
@@ -64,7 +74,7 @@ def load_github_tokens(env_path: Optional[Path] = None, max_tokens: int = 3) -> 
 
     if not deduped:
         raise ValueError(
-            "No GitHub token found. Set GH_PAT or GITHUB_TOKEN in repository secrets or local env, "
-            "or provide TOKENS_ENV_PATH/.github_tokens.env with GITHUB_TOKEN_1=..."
+            "No GitHub token found. Set GH_PAT_1..GH_PAT_5, GH_PAT, or GITHUB_TOKEN in repository secrets or local env, "
+            "or provide TOKENS_ENV_PATH/.github_tokens.env with GH_PAT_1=..."
         )
     return deduped[:max_tokens]

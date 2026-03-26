@@ -1254,7 +1254,7 @@ def build_run_per_style_rows(base_row: Dict[str, str], style_payloads: Dict[str,
 def main() -> None:
     tokens = []
     try:
-        tokens = load_github_tokens(TOKENS_ENV_PATH)[:MAX_TOKENS_TO_USE]
+        tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
     except Exception:
         tokens = read_env_tokens(TOKENS_ENV_PATH)
     gh = GitHubClient(tokens)

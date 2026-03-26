@@ -1,0 +1,82 @@
+name: Stage 3 Shard
+
+on:
+  workflow_call:
+    inputs:
+      shard_id:
+        required: true
+        type: string
+      shard_root:
+        required: false
+        type: string
+        default: data/processed/stage3_shards
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  run-shard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 260
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download stage 3 shard definitions
+        uses: actions/download-artifact@v6
+        with:
+          name: stage3-shard-definitions
+          path: stage3-shard-definitions
+
+      - name: Prepare stage 3 shard root
+        run: |
+          mkdir -p "${{ inputs.shard_root }}/${{ inputs.shard_id }}"
+          cp "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory.csv" "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv"
+          cp "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory_per_style.csv" "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv"
+          echo "Stage 3 driver lines:"
+          wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv" || true
+          echo "Stage 3 reference lines:"
+          wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv" || true
+
+      - name: Run Stage 3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_PAT_1: ${{ secrets.GH_PAT_1 }}
+          GH_PAT_2: ${{ secrets.GH_PAT_2 }}
+          GH_PAT_3: ${{ secrets.GH_PAT_3 }}
+          GH_PAT_4: ${{ secrets.GH_PAT_4 }}
+          GH_PAT_5: ${{ secrets.GH_PAT_5 }}
+          ROOT_DIR: ${{ github.workspace }}/${{ inputs.shard_root }}/${{ inputs.shard_id }}
+        run: python -m pipeline.stage3_run_telemetry
+
+      - name: Check Stage 3 outputs
+        if: always()
+        run: |
+          echo "run_metrics lines:"
+          wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_metrics_v16_stage3_enhanced.csv" || true
+          echo "run_steps lines:"
+          wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv" || true
+          echo "run_per_style lines:"
+          wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv" || true
+
+      - name: Upload Stage 3 shard outputs
+        uses: actions/upload-artifact@v6
+        with:
+          name: stage3-${{ inputs.shard_id }}
+          path: |
+            ${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_metrics_v16_stage3_enhanced.csv
+            ${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv
+            ${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv
