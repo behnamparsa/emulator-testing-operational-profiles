@@ -79,13 +79,21 @@ jobs:
           echo "Stage 1 output preview:"
           sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/verified_workflows_v16.csv" || true
 
+      - name: Debug shard folder before upload
+        if: always()
+        run: |
+          echo "Shard folder contents:"
+          find "${{ inputs.shard_root }}/${{ inputs.shard_id }}" -maxdepth 3 -print || true
+
       - name: Validate Stage 1 output exists
         run: |
           test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/verified_workflows_v16.csv"
 
       - name: Upload Stage 1 shard output
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: stage1-shard-${{ inputs.shard_id }}
           path: |
             ${{ inputs.shard_root }}/${{ inputs.shard_id }}/verified_workflows_v16.csv
+          if-no-files-found: warn

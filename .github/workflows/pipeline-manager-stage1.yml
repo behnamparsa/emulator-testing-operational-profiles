@@ -146,7 +146,7 @@ jobs:
         if: always()
         run: |
           echo "Downloaded directory tree:"
-          find data/processed/stage1_shards_downloaded -maxdepth 4 -print || true
+          find data/processed/stage1_shards_downloaded -maxdepth 5 -print || true
 
       - name: Fail clearly if no Stage 1 shard artifacts were downloaded
         run: |
