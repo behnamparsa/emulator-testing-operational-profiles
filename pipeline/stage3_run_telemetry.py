@@ -1219,10 +1219,31 @@ def compute_style_metrics_for_run(row: Dict[str, str], step_rows: List[Dict[str,
     return payload
 
 
+def style_has_executed_instru(payload: Dict[str, object]) -> bool:
+    """
+    Stage 3 authoritative executed-subset gate.
+    Treat a style as executed only when we can identify an instrumentation path,
+    i.e. at least an anchor and an execution window signal.
+    """
+    for k in [
+        "instru_duration_seconds",
+        "core_instru_window_seconds",
+        "instru_exec_window_seconds",
+        "time_to_first_instru_from_run_seconds",
+        "anchor_selected_seconds",
+        "exec_end_selected_seconds",
+    ]:
+        v = payload.get(k, "")
+        if v not in ("", None):
+            return True
+    return False
+
+
+
 def build_run_level_row(base_row: Dict[str, str], style_payloads: Dict[str, Dict[str, object]]) -> Dict[str, object]:
     out: Dict[str, object] = dict(base_row)
 
-    all_styles = get_declared_styles(base_row)
+    all_styles = list(style_payloads.keys()) or get_declared_styles(base_row)
     picked = all_styles[0] if all_styles else ""
     primary = style_payloads.get(picked) if picked else None
 
@@ -1231,11 +1252,14 @@ def build_run_level_row(base_row: Dict[str, str], style_payloads: Dict[str, Dict
         out["instru_duration_seconds"] = primary.get("instru_duration_seconds", "")
         out["core_instru_window_seconds"] = primary.get("core_instru_window_seconds", "")
         out["instru_exec_window_seconds"] = primary.get("instru_exec_window_seconds", "")
+        # Make Stage 3 the authoritative executed subset, like V20.
+        out["instru_job_count"] = str(max(1, len(style_payloads)))
     else:
         out["time_to_first_instru_from_run_seconds"] = ""
         out["instru_duration_seconds"] = ""
         out["core_instru_window_seconds"] = ""
         out["instru_exec_window_seconds"] = ""
+        out["instru_job_count"] = "0"
 
     return out
 
@@ -1276,11 +1300,13 @@ def build_step_breakdown_rows(base_row: Dict[str, str], step_rows: List[Dict[str
 
 def build_run_per_style_rows(base_row: Dict[str, str], style_payloads: Dict[str, Dict[str, object]]) -> List[Dict[str, object]]:
     out = []
-    declared = get_declared_styles(base_row)
-    for style in declared:
+    styles_to_emit = list(style_payloads.keys())
+    for style in styles_to_emit:
         p = style_payloads.get(style, empty_style_metric_dict())
         row = dict(base_row)
         row["style"] = style
+        row["target_style"] = style
+        row["style_instru_job_count"] = "1" if style_has_executed_instru(p) else "0"
         for k in STYLE_METRIC_KEYS:
             row[k] = p.get(k, "")
         row["time_to_first_instru_from_run_seconds"] = p.get("time_to_first_instru_from_run_seconds", "")
@@ -1360,7 +1386,14 @@ def main() -> None:
 
         style_payloads: Dict[str, Dict[str, object]] = {}
         for style in get_declared_styles(row):
-            style_payloads[style] = compute_style_metrics_for_run(row, steps, style)
+            payload = compute_style_metrics_for_run(row, steps, style)
+            if style_has_executed_instru(payload):
+                style_payloads[style] = payload
+
+        # V20-aligned executed-subset gate:
+        # only retain rows/runs where instrumentation actually executed.
+        if not style_payloads:
+            continue
 
         run_rows_out.append(build_run_level_row(row, style_payloads))
         step_rows_out.extend(build_step_breakdown_rows(row, steps))
