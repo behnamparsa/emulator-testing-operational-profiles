@@ -6,6 +6,10 @@ on:
       shard_id:
         required: true
         type: string
+      shard_file:
+        required: false
+        type: string
+        default: verified_workflows_v16.csv
       shard_root:
         required: false
         type: string
@@ -21,6 +25,7 @@ jobs:
   run-shard:
     runs-on: ubuntu-latest
     timeout-minutes: 220
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -35,30 +40,41 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Download stage 2 shard definitions
-        uses: actions/download-artifact@v6
+      - name: Download Stage 2 shard definitions
+        uses: actions/download-artifact@v8
         with:
-          name: stage2-shard-definitions
+          name: stage2-definitions
           path: stage2-shard-definitions
 
-      - name: Prepare stage 2 shard root
+      - name: Prepare Stage 2 shard root
         run: |
+          rm -rf "${{ inputs.shard_root }}/${{ inputs.shard_id }}"
           mkdir -p "${{ inputs.shard_root }}/${{ inputs.shard_id }}"
-          cp "stage2-shard-definitions/${{ inputs.shard_id }}/verified_workflows_v16.csv" "${{ inputs.shard_root }}/${{ inputs.shard_id }}/verified_workflows_v16.csv"
+          cp "stage2-shard-definitions/${{ inputs.shard_id }}/${{ inputs.shard_file }}" \
+             "${{ inputs.shard_root }}/${{ inputs.shard_id }}/verified_workflows_v16.csv"
+
           echo "Stage 2 shard input lines:"
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/verified_workflows_v16.csv" || true
+          echo "Stage 2 shard input preview:"
+          sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/verified_workflows_v16.csv" || true
 
       - name: Run Stage 2
         env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GITHUB_TOKEN: ${{ github.token }}
           GH_PAT_1: ${{ secrets.GH_PAT_1 }}
           GH_PAT_2: ${{ secrets.GH_PAT_2 }}
           GH_PAT_3: ${{ secrets.GH_PAT_3 }}
           GH_PAT_4: ${{ secrets.GH_PAT_4 }}
           GH_PAT_5: ${{ secrets.GH_PAT_5 }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
           ROOT_DIR: ${{ github.workspace }}/${{ inputs.shard_root }}/${{ inputs.shard_id }}
-        run: python -m pipeline.stage2_run_inventory
+        run: |
+          python -m pipeline.stage2_run_inventory
+
+      - name: Validate Stage 2 outputs exist
+        run: |
+          test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv"
+          test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv"
 
       - name: Check Stage 2 outputs
         if: always()
@@ -67,11 +83,15 @@ jobs:
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv" || true
           echo "run_inventory_per_style.csv lines:"
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv" || true
+          echo "run_inventory.csv preview:"
+          sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv" || true
+          echo "run_inventory_per_style.csv preview:"
+          sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv" || true
 
       - name: Upload Stage 2 shard outputs
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
-          name: stage2-${{ inputs.shard_id }}
+          name: stage2-shard-${{ inputs.shard_id }}
           path: |
             ${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv
             ${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv

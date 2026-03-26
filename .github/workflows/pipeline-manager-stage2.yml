@@ -24,85 +24,168 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       shard_matrix: ${{ steps.build.outputs.shard_matrix }}
+
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Prepare stage 2 shards
+
+      - name: Validate Stage 2 input
         run: |
-          mkdir -p data/processed/stage2_shards
           test -f data/processed/verified_workflows_v16.csv
-          python scripts/split_csv_rows.py             --input data/processed/verified_workflows_v16.csv             --output-root data/processed/stage2_shards             --base-name verified_workflows_v16.csv             --chunk-size "${{ inputs.chunk_size }}"
-      - name: Upload stage 2 shard definitions
-        uses: actions/upload-artifact@v6
+          echo "Stage 2 input:"
+          ls -l data/processed/verified_workflows_v16.csv
+          echo "Stage 2 input lines:"
+          wc -l data/processed/verified_workflows_v16.csv || true
+          echo "Stage 2 input preview:"
+          sed -n '1,10p' data/processed/verified_workflows_v16.csv || true
+
+      - name: Prepare Stage 2 shards
+        run: |
+          rm -rf data/processed/stage2_shards
+          mkdir -p data/processed/stage2_shards
+          python scripts/split_csv_rows.py \
+            --input data/processed/verified_workflows_v16.csv \
+            --chunk-size "${{ inputs.chunk_size }}" \
+            --out-dir data/processed/stage2_shards \
+            --filename verified_workflows_v16.csv
+
+      - name: Show prepared Stage 2 shards
+        run: |
+          echo "Prepared shard files:"
+          find data/processed/stage2_shards -maxdepth 2 -type f | sort || true
+
+      - name: Upload Stage 2 shard definitions
+        uses: actions/upload-artifact@v7
         with:
-          name: stage2-shard-definitions
+          name: stage2-definitions
           path: data/processed/stage2_shards
+
       - id: build
-        name: Build shard matrix
+        name: Build Stage 2 shard matrix
         run: |
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
-          root = Path('data/processed/stage2_shards')
-          shards = sorted([p.name for p in root.iterdir() if p.is_dir()])
-          matrix = {'include': [{'shard_id': s} for s in shards]}
-          with open('${GITHUB_OUTPUT}', 'a', encoding='utf-8') as fh:
+
+          root = Path("data/processed/stage2_shards")
+          shard_dirs = sorted([p for p in root.iterdir() if p.is_dir()])
+
+          matrix = {
+              "include": [
+                  {
+                      "shard_id": p.name,
+                      "shard_file": "verified_workflows_v16.csv"
+                  }
+                  for p in shard_dirs
+              ]
+          }
+
+          print("Stage 2 shard matrix:")
+          print(json.dumps(matrix, indent=2))
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"shard_matrix={json.dumps(matrix)}\n")
-          print(matrix)
           PY
 
   run-stage2-shards:
     needs: prepare-stage2-shards
-    if: ${{ fromJson(needs.prepare-stage2-shards.outputs.shard_matrix).include[0] != null }}
+    if: ${{ needs.prepare-stage2-shards.outputs.shard_matrix != '' && needs.prepare-stage2-shards.outputs.shard_matrix != '{"include":[]}' }}
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJson(inputs.max_parallel) }}
       matrix: ${{ fromJson(needs.prepare-stage2-shards.outputs.shard_matrix) }}
+
     uses: ./.github/workflows/stage2-shard.yml
     with:
       shard_id: ${{ matrix.shard_id }}
+      shard_file: ${{ matrix.shard_file }}
+    secrets: inherit
 
   aggregate-stage2:
     needs: run-stage2-shards
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Download stage 2 shard outputs
-        uses: actions/download-artifact@v6
+
+      - name: Download Stage 2 shard outputs
+        uses: actions/download-artifact@v8
         with:
-          pattern: stage2-*
+          pattern: stage2-shard-*
           path: data/processed/stage2_shards_downloaded
           merge-multiple: false
-      - name: Aggregate Stage 2
+
+      - name: Show downloaded Stage 2 shard outputs
         run: |
+          echo "Downloaded files:"
+          find data/processed/stage2_shards_downloaded -type f | sort || true
+
+      - name: Aggregate Stage 2 run_inventory.csv
+        run: |
+          rm -f data/processed/run_inventory.csv
           mkdir -p data/processed
-          python scripts/aggregate_selected_results.py             --input-root data/processed/stage2_shards_downloaded             --output-root data/processed             --files run_inventory.csv run_inventory_per_style.csv
-          echo 'Stage 2 merged run_inventory rows:'
+          python scripts/aggregate_selected_results.py \
+            --input-dir data/processed/stage2_shards_downloaded \
+            --output-dir data/processed \
+            --file run_inventory.csv
+
+          echo "Stage 2 merged run_inventory rows:"
           wc -l data/processed/run_inventory.csv || true
-          echo 'Stage 2 merged run_inventory_per_style rows:'
+          echo "Stage 2 merged run_inventory preview:"
+          sed -n '1,10p' data/processed/run_inventory.csv || true
+
+      - name: Aggregate Stage 2 run_inventory_per_style.csv
+        run: |
+          rm -f data/processed/run_inventory_per_style.csv
+          python scripts/aggregate_selected_results.py \
+            --input-dir data/processed/stage2_shards_downloaded \
+            --output-dir data/processed \
+            --file run_inventory_per_style.csv
+
+          echo "Stage 2 merged run_inventory_per_style rows:"
           wc -l data/processed/run_inventory_per_style.csv || true
+          echo "Stage 2 merged run_inventory_per_style preview:"
+          sed -n '1,10p' data/processed/run_inventory_per_style.csv || true
+
+      - name: Validate Stage 2 outputs exist
+        run: |
+          test -f data/processed/run_inventory.csv
+          test -f data/processed/run_inventory_per_style.csv
+
       - name: Commit Stage 2 outputs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/processed/run_inventory.csv data/processed/run_inventory_per_style.csv
           git diff --cached --quiet || git commit -m "Stage 2 manager: run inventory outputs"
           git push
+
       - name: Upload Stage 2 artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: stage2
           path: |
