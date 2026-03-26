@@ -332,13 +332,48 @@ def get_repo_meta(gh: GitHubClient, full_name: str) -> Dict[str, str]:
         "private": str(bool(data.get("private"))).lower(),
     }
 
-def list_workflows(gh: GitHubClient, full_name: str) -> List[Dict]:
+def list_workflows_via_actions_api(gh: GitHubClient, full_name: str) -> List[Dict]:
     url = f"https://api.github.com/repos/{full_name}/actions/workflows"
     data = gh.request_json("GET", url, params={"per_page": 100})
     if not isinstance(data, dict):
         return []
     wfs = data.get("workflows", [])
     return wfs if isinstance(wfs, list) else []
+
+def list_workflow_files_via_contents_api(gh: GitHubClient, full_name: str, ref: str) -> List[Dict]:
+    url = f"https://api.github.com/repos/{full_name}/contents/.github/workflows"
+    data = gh.request_json("GET", url, params={"ref": ref} if ref else {})
+    if not isinstance(data, list):
+        return []
+    out: List[Dict] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        path = (item.get("path") or "").strip()
+        name = (item.get("name") or "").strip()
+        item_type = (item.get("type") or "").strip()
+        if item_type != "file":
+            continue
+        if not path.lower().endswith((".yml", ".yaml")):
+            continue
+        out.append({
+            "id": "",
+            "name": name or path.split("/")[-1],
+            "path": path,
+            "state": "active",
+        })
+    return out
+
+def list_workflows(gh: GitHubClient, full_name: str, default_branch: str) -> Tuple[List[Dict], str]:
+    api_items = list_workflows_via_actions_api(gh, full_name)
+    if api_items:
+        return api_items, "actions_api"
+
+    content_items = list_workflow_files_via_contents_api(gh, full_name, default_branch)
+    if content_items:
+        return content_items, "contents_api"
+
+    return [], "none"
 
 def fetch_file_text_at_ref(gh: GitHubClient, full_name: str, path: str, ref: str) -> str:
     url = f"https://api.github.com/repos/{full_name}/contents/{path.lstrip('/')}"
@@ -1201,12 +1236,22 @@ def follow_called_files(
 # =========================
 # Stage-1 processing
 # =========================
-def build_stage1_rows_for_repo(gh: GitHubClient, full_name: str, repo_url: str) -> List[Dict[str, str]]:
+def build_stage1_rows_for_repo(gh: GitHubClient, full_name: str, repo_url: str) -> Tuple[List[Dict[str, str]], Dict[str, object]]:
     meta = get_repo_meta(gh, full_name)
     default_branch = meta.get("default_branch") or "main"
 
-    workflows = list_workflows(gh, full_name)
+    workflows, workflow_source = list_workflows(gh, full_name, default_branch)
     out_rows: List[Dict[str, str]] = []
+    stats: Dict[str, object] = {
+        "repo": full_name,
+        "default_branch": default_branch,
+        "workflow_source": workflow_source,
+        "workflows_listed": len(workflows),
+        "workflow_files_seen": 0,
+        "workflow_yaml_loaded": 0,
+        "rows_written": 0,
+        "yaml_fetch_failures": [],
+    }
 
     for wf in workflows:
         wf_name = (wf.get("name") or "").strip()
@@ -1216,10 +1261,13 @@ def build_stage1_rows_for_repo(gh: GitHubClient, full_name: str, repo_url: str) 
 
         if not wf_path:
             continue
+        stats["workflow_files_seen"] = int(stats["workflow_files_seen"]) + 1
 
         yaml_text = fetch_file_text_at_ref(gh, full_name, wf_path, default_branch)
         if not yaml_text:
+            stats["yaml_fetch_failures"].append(wf_path)
             continue
+        stats["workflow_yaml_loaded"] = int(stats["workflow_yaml_loaded"]) + 1
 
         origin_ref_to_step_names = build_origin_ref_to_step_names(yaml_text)
 
@@ -1284,16 +1332,25 @@ def build_stage1_rows_for_repo(gh: GitHubClient, full_name: str, repo_url: str) 
             "stage1_extracted_at_utc": now_utc_iso(),
         }
         out_rows.append(row)
+        stats["rows_written"] = int(stats["rows_written"]) + 1
 
-    return out_rows
+    return out_rows, stats
 
 def main() -> None:
     tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
     gh = GitHubClient(tokens)
 
+    print(f"Stage1 ROOT_DIR: {ROOT_DIR}")
+    print(f"Stage1 input CSV: {IN_URL_LIST_CSV}")
+    print(f"Stage1 output CSV: {OUT_STAGE1_CSV}")
+    print(f"Stage1 token sources loaded: {len(tokens)}")
+
     url_rows, url_fields = read_csv_rows(IN_URL_LIST_CSV)
     if not url_rows:
         raise RuntimeError("URL_List.csv is empty.")
+
+    print(f"Stage1 loaded repo rows: {len(url_rows)}")
+    print(f"Stage1 input columns: {url_fields}")
 
     candidates = ["repo_urls", "repo_url", "url", "repo"]
 
@@ -1306,17 +1363,46 @@ def main() -> None:
         return ""
 
     repo_urls = unique_preserve([get_url(r) for r in url_rows])
+    print(f"Stage1 normalized repo URLs: {len(repo_urls)}")
+    print(f"Stage1 first repo URLs: {repo_urls[:3]}")
 
     stage1_rows: List[Dict[str, str]] = []
+
+    repos_seen = 0
+    repos_failed = 0
+    repos_with_any_workflows_listed = 0
+    workflow_files_seen = 0
+    workflow_yaml_loaded = 0
+    workflow_rows_written = 0
 
     for u in repo_urls:
         full_name = parse_repo_full_name(u)
         if not full_name:
+            print(f"[skip] invalid repo url: {u}")
             continue
+        repos_seen += 1
         try:
-            rows = build_stage1_rows_for_repo(gh, full_name, u)
+            rows, stats = build_stage1_rows_for_repo(gh, full_name, u)
             stage1_rows.extend(rows)
+
+            if int(stats.get("workflows_listed", 0) or 0) > 0:
+                repos_with_any_workflows_listed += 1
+            workflow_files_seen += int(stats.get("workflow_files_seen", 0) or 0)
+            workflow_yaml_loaded += int(stats.get("workflow_yaml_loaded", 0) or 0)
+            workflow_rows_written += int(stats.get("rows_written", 0) or 0)
+
+            print(
+                f"[repo] {full_name} "
+                f"source={stats.get('workflow_source')} "
+                f"listed={stats.get('workflows_listed')} "
+                f"yaml_loaded={stats.get('workflow_yaml_loaded')} "
+                f"rows_written={stats.get('rows_written')}"
+            )
+            yaml_failures = stats.get("yaml_fetch_failures") or []
+            if yaml_failures:
+                print(f"[repo-yaml-miss] {full_name}: {yaml_failures[:5]}")
         except Exception as e:
+            repos_failed += 1
             stage1_rows.append({
                 "repo_url": u,
                 "full_name": full_name,
@@ -1371,6 +1457,12 @@ def main() -> None:
     ]
 
     write_csv(OUT_STAGE1_CSV, out_fields, stage1_rows)
+    print(f"Stage1 repos seen: {repos_seen}")
+    print(f"Stage1 repos failed: {repos_failed}")
+    print(f"Stage1 repos with any workflows listed: {repos_with_any_workflows_listed}")
+    print(f"Stage1 workflow files seen: {workflow_files_seen}")
+    print(f"Stage1 workflow YAML loaded: {workflow_yaml_loaded}")
+    print(f"Stage1 rows written: {workflow_rows_written}")
     print("[done] Stage 1:", OUT_STAGE1_CSV, f"(rows={len(stage1_rows)})")
 
 if __name__ == "__main__":
