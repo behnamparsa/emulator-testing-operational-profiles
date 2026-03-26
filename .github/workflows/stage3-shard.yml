@@ -80,6 +80,12 @@ jobs:
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv" || true
           echo "run_per_style lines:"
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv" || true
+          echo "run_metrics preview:"
+          sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_metrics_v16_stage3_enhanced.csv" || true
+          echo "run_steps preview:"
+          sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv" || true
+          echo "run_per_style preview:"
+          sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv" || true
           echo "Shard folder contents:"
           find "${{ inputs.shard_root }}/${{ inputs.shard_id }}" -maxdepth 3 -print || true
 

@@ -47,6 +47,10 @@ jobs:
           wc -l data/processed/run_inventory.csv || true
           echo "run_inventory_per_style lines:"
           wc -l data/processed/run_inventory_per_style.csv || true
+          echo "run_inventory preview:"
+          sed -n '1,10p' data/processed/run_inventory.csv || true
+          echo "run_inventory_per_style preview:"
+          sed -n '1,10p' data/processed/run_inventory_per_style.csv || true
 
       - name: Prepare Stage 3 shards
         run: |
@@ -148,7 +152,9 @@ jobs:
       - name: Inspect aggregated run_metrics
         if: always()
         run: |
+          echo "run_metrics lines:"
           wc -l data/processed/run_metrics_v16_stage3_enhanced.csv || true
+          echo "run_metrics preview:"
           sed -n '1,10p' data/processed/run_metrics_v16_stage3_enhanced.csv || true
 
       - name: Aggregate run_steps_v16_stage3_breakdown.csv
@@ -162,7 +168,9 @@ jobs:
       - name: Inspect aggregated run_steps
         if: always()
         run: |
+          echo "run_steps lines:"
           wc -l data/processed/run_steps_v16_stage3_breakdown.csv || true
+          echo "run_steps preview:"
           sed -n '1,10p' data/processed/run_steps_v16_stage3_breakdown.csv || true
 
       - name: Aggregate run_per_style_v1_stage3.csv
@@ -176,7 +184,9 @@ jobs:
       - name: Inspect aggregated run_per_style
         if: always()
         run: |
+          echo "run_per_style lines:"
           wc -l data/processed/run_per_style_v1_stage3.csv || true
+          echo "run_per_style preview:"
           sed -n '1,10p' data/processed/run_per_style_v1_stage3.csv || true
 
       - name: Validate Stage 3 outputs exist
