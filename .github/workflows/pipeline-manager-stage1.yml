@@ -151,9 +151,9 @@ jobs:
           rm -f data/processed/verified_workflows_v16.csv
           mkdir -p data/processed
           python scripts/aggregate_selected_results.py \
-            --input-root data/processed/stage1_shards_downloaded \
-            --output-root data/processed \
-            --files verified_workflows_v16.csv
+            --input-dir data/processed/stage1_shards_downloaded \
+            --output-dir data/processed \
+            --file verified_workflows_v16.csv
 
           echo "Stage 1 merged rows:"
           wc -l data/processed/verified_workflows_v16.csv || true
