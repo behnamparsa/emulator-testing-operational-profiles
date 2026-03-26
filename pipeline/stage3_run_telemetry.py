@@ -45,6 +45,7 @@ import csv
 import random
 import re
 import time
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1385,8 +1386,23 @@ def main() -> None:
     step_fields = list(unique_preserve([k for r in step_rows_out for k in r.keys()]))
     per_style_fields = list(unique_preserve([k for r in per_style_rows_out for k in r.keys()]))
 
+    if not run_fields:
+        run_fields = ["repo_full_name", "workflow_run_id", "attempt"]
+    if not step_fields:
+        step_fields = ["full_name", "run_id", "run_attempt", "job_name", "step_name"]
+    if not per_style_fields:
+        per_style_fields = ["repo_full_name", "workflow_run_id", "attempt", "style"]
+
     write_csv(OUT_STAGE3A_RUNS_CSV, run_fields, run_rows_out)
     write_csv(OUT_STAGE3B_STEPS_CSV, step_fields, step_rows_out)
     write_csv(OUT_STAGE3C_RUN_PER_STYLE_CSV, per_style_fields, per_style_rows_out)
 
     print(f"[done] Stage 3 runs rows={len(run_rows_out)} steps rows={len(step_rows_out)} per-style rows={len(per_style_rows_out)}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(f"[error] Stage 3 failed: {exc}", file=sys.stderr)
+        raise
