@@ -355,7 +355,15 @@ def main() -> None:
     ensure_alias(df, "run_duration_seconds", ["duration_seconds"])
     ensure_alias(df, "queue_seconds", ["queue_duration_seconds"])
 
-    ensure_alias(df, "ttfts_seconds", ["ttfts_seconds_modified"])
+    ensure_alias(
+        df,
+        "ttfts_seconds",
+        [
+            "ttfts_seconds_modified",
+            "time_to_first_instru_from_run_seconds",
+            "modified_ttfts_seconds",
+        ],
+    )
 
     # IMPORTANT:
     # - instru_duration_seconds = FULL instrumentation-path window
@@ -394,6 +402,13 @@ def main() -> None:
     ]:
         to_num(df, c)
 
+
+    # Current Stage 3 compatibility:
+    # if the canonical ttfts_seconds still does not exist, materialize it from
+    # the current Stage 3 name before downstream study-field construction.
+    if "ttfts_seconds" not in df.columns and "time_to_first_instru_from_run_seconds" in df.columns:
+        df["ttfts_seconds"] = pd.to_numeric(df["time_to_first_instru_from_run_seconds"], errors="coerce")
+
     if "core_instru_window_seconds" in df.columns and "instru_exec_window_seconds" in df.columns:
         fill_a = df["core_instru_window_seconds"].isna() & df["instru_exec_window_seconds"].notna()
         df.loc[fill_a, "core_instru_window_seconds"] = df.loc[fill_a, "instru_exec_window_seconds"]
@@ -414,6 +429,11 @@ def main() -> None:
         df["study_queue_seconds"], "trigger_to_run_start"
     )
 
+    if "ttfts_seconds" not in df.columns:
+        raise ValueError(
+            "Stage 3C is missing TTFTS. Expected one of: ttfts_seconds, "
+            "ttfts_seconds_modified, time_to_first_instru_from_run_seconds."
+        )
     df["study_ttfts_seconds"] = df["ttfts_seconds"]
     df["study_ttfts_source_final"] = build_ttfts_source_final(df)
 
