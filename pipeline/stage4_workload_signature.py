@@ -64,8 +64,8 @@ from config.runtime import get_root_dir, get_tokens_env_path, load_github_tokens
 # =========================
 # CONFIG
 # =========================
-TOKENS_ENV_PATH = Path(r"C:\GitHub\Android-Mobile-Apps\All_Tokens.env")
-ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
+TOKENS_ENV_PATH = get_tokens_env_path()
+ROOT_DIR = get_root_dir()
 
 IN_RUN_METRICS_CSV = ROOT_DIR / "run_metrics_v16_stage3_enhanced.csv"
 IN_RUN_STEPS_CSV = ROOT_DIR / "run_steps_v16_stage3_breakdown.csv"
@@ -711,7 +711,7 @@ def extract_junit_cases_from_artifacts(gh: GitHubClient, full_name: str, run_id:
 # MAIN
 # =========================
 def main() -> None:
-    tokens = load_tokens_from_env_file(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
+    tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
     gh = GitHubClient(tokens)
 
     run_rows, _ = read_csv_rows(IN_RUN_METRICS_CSV)

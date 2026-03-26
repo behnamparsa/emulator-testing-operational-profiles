@@ -104,9 +104,9 @@ except ImportError:
 # =========================
 # CONFIG
 # =========================
-TOKENS_ENV_PATH = Path(r"C:\GitHub\Android-Mobile-Apps\All_Tokens.env")
+TOKENS_ENV_PATH = get_tokens_env_path()
 
-ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
+ROOT_DIR = get_root_dir()
 
 IN_VERIFIED_WORKFLOWS_CSV = ROOT_DIR / "verified_workflows_v16.csv"
 

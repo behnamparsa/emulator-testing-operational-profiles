@@ -87,8 +87,8 @@ except ImportError:
 # =========================
 # CONFIG
 # =========================
-TOKENS_ENV_PATH = Path(r"C:\GitHub\Android-Mobile-Apps\All_Tokens.env")
-ROOT_DIR = Path(r"C:\Android Mobile App\ICST2026_Ext")
+TOKENS_ENV_PATH = get_tokens_env_path()
+ROOT_DIR = get_root_dir()
 
 IN_STAGE2_RUN_CSV = ROOT_DIR / "run_inventory.csv"
 IN_STAGE2_PER_STYLE_CSV = ROOT_DIR / "run_inventory_per_style.csv"
