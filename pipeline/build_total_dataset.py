@@ -238,12 +238,36 @@ def make_style_key(df: pd.DataFrame) -> pd.Series:
     return repo + "||" + run + "||" + attempt + "||" + style
 
 
+def strip_bom_and_dedup_columns(df: pd.DataFrame) -> pd.DataFrame:
+    cols = [(c.replace("\ufeff", "").strip() if isinstance(c, str) else c) for c in df.columns]
+    df = df.copy()
+    df.columns = cols
+    # Keep first occurrence after BOM normalization
+    return df.loc[:, ~pd.Index(df.columns).duplicated()]
+
+def drop_legacy_alias_columns(df: pd.DataFrame) -> pd.DataFrame:
+    # After canonical aliases are materialized, keep only study-facing canonical names.
+    drop_cols = [
+        "full_name",           # keep repo_full_name
+        "run_id",              # keep workflow_run_id
+        "attempt",             # keep run_attempt for controller, then later keep canonical attempt alias only if needed
+        "target_style",        # keep style / study_style
+        "Inferred_Label",
+        "repository",
+        "execution_style",
+        "provider_category",
+        "style_label",
+    ]
+    existing = [c for c in drop_cols if c in df.columns]
+    return df.drop(columns=existing, errors="ignore")
+
+
 # =========================
 # MAIN
 # =========================
 def main() -> None:
-    df = pd.read_csv(IN_STAGE3C, low_memory=False)
-    stage4 = pd.read_csv(IN_STAGE4, low_memory=False)
+    df = strip_bom_and_dedup_columns(pd.read_csv(IN_STAGE3C, low_memory=False))
+    stage4 = strip_bom_and_dedup_columns(pd.read_csv(IN_STAGE4, low_memory=False))
 
     # -------------------------------------------------
     # Harmonize V13-style keys
@@ -611,6 +635,9 @@ def main() -> None:
     sig_stats["outlier_signature"] = sig_stats["out_tukey"] & sig_stats["out_mad"]
     outlier_sigs: Set[str] = set(sig_stats.loc[sig_stats["outlier_signature"], "signature_hash_base"].astype(str))
 
+    # Remove legacy/compatibility aliases so the final MainDataset schema is clean.
+    df = drop_legacy_alias_columns(df)
+
     df["Robust"] = (
         df["Base"]
         & df["signature_hash_base"].notna()
@@ -625,7 +652,6 @@ def main() -> None:
         "workflow_id",
         "workflow_name",
         "workflow_run_id",
-        "attempt",
         "run_attempt",
         "event",
         "head_branch",
