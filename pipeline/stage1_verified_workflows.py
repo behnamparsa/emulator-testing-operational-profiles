@@ -34,6 +34,7 @@
 # ============================================================
 
 import base64
+import os
 import csv
 import random
 import re
@@ -135,6 +136,17 @@ def safe_join_pipe(items: List[str], max_len: int = 3000) -> str:
         return s
     return s[: max_len - 3] + "..."
 
+
+def external_repo_tokens() -> List[Optional[str]]:
+    """For cross-repo scans, prefer a PAT and otherwise fall back to
+    unauthenticated requests for public repositories. Avoid using the current
+    repo's GITHUB_TOKEN for external workflow discovery.
+    """
+    gh_pat = (os.environ.get("GH_PAT") or "").strip()
+    if gh_pat:
+        return [gh_pat, None]
+    return [None]
+
 def parse_repo_full_name(url: str) -> str:
     u = (url or "").strip()
     if not u:
@@ -191,24 +203,38 @@ def normalize_repo_rel_path(ref: str) -> str:
 # =========================
 @dataclass
 class TokenState:
-    token: str
+    token: Optional[str]
     remaining: Optional[int] = None
     reset_epoch: Optional[int] = None
 
 class GitHubClient:
-    def __init__(self, tokens: List[str]) -> None:
+    def __init__(self, tokens: List[Optional[str]]) -> None:
         self.session = requests.Session()
         self.session.headers.update({
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
             "User-Agent": "stage1-v16-workflow-scan/1.0",
         })
-        self.tokens = [TokenState(t) for t in tokens]
+        cleaned: List[Optional[str]] = []
+        seen = set()
+        for t in tokens:
+            key = (t or "").strip()
+            dedupe_key = key if key else "__NONE__"
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            cleaned.append(key or None)
+        if not cleaned:
+            cleaned = [None]
+        self.tokens = [TokenState(t) for t in cleaned]
 
     def _pick_idx(self) -> int:
         now = int(time.time())
         candidates = []
         for i, st in enumerate(self.tokens):
+            if st.token is None:
+                candidates.append((0, i))
+                continue
             if st.remaining is None or st.remaining > 0:
                 candidates.append((0, i))
             else:
@@ -221,7 +247,7 @@ class GitHubClient:
 
     def _sleep_until_reset(self) -> None:
         now = int(time.time())
-        resets = [st.reset_epoch for st in self.tokens if st.reset_epoch]
+        resets = [st.reset_epoch for st in self.tokens if st.token and st.reset_epoch]
         if not resets:
             time.sleep(5)
             return
@@ -239,27 +265,32 @@ class GitHubClient:
         for attempt in range(1, MAX_RETRIES_PER_REQUEST + 1):
             idx = self._pick_idx()
             st = self.tokens[idx]
-            self.session.headers["Authorization"] = f"Bearer {st.token}"
+            headers = dict(self.session.headers)
+            if st.token:
+                headers["Authorization"] = f"Bearer {st.token}"
+            else:
+                headers.pop("Authorization", None)
             try:
-                resp = self.session.request(method, url, params=params, timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S))
+                resp = self.session.request(method, url, params=params, headers=headers, timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S))
             except requests.exceptions.RequestException:
                 self._backoff(attempt)
                 continue
 
             last_status = resp.status_code
 
-            rem = resp.headers.get("X-RateLimit-Remaining")
-            if rem is not None:
-                try:
-                    st.remaining = int(rem)
-                except Exception:
-                    pass
-            rst = resp.headers.get("X-RateLimit-Reset")
-            if rst is not None:
-                try:
-                    st.reset_epoch = int(rst)
-                except Exception:
-                    pass
+            if st.token:
+                rem = resp.headers.get("X-RateLimit-Remaining")
+                if rem is not None:
+                    try:
+                        st.remaining = int(rem)
+                    except Exception:
+                        pass
+                rst = resp.headers.get("X-RateLimit-Reset")
+                if rst is not None:
+                    try:
+                        st.reset_epoch = int(rst)
+                    except Exception:
+                        pass
 
             if resp.status_code == 404:
                 return None
@@ -280,10 +311,18 @@ class GitHubClient:
                 or "abuse detection" in text_l
                 or "too many requests" in text_l
             ):
-                if any((t.remaining is None) or (t.remaining > 0) for t in self.tokens):
+                if any((t.token is None) or (t.remaining is None) or (t.remaining > 0) for t in self.tokens):
                     self._backoff(attempt)
                     continue
                 self._sleep_until_reset()
+                continue
+
+            # Repository-scoped GITHUB_TOKEN often cannot access external repos.
+            # If an authenticated request is denied, retry with unauthenticated/public mode.
+            if resp.status_code in (401, 403) and st.token:
+                if not any(t.token is None for t in self.tokens):
+                    self.tokens.append(TokenState(None))
+                self._backoff(attempt)
                 continue
 
             if resp.status_code in (500, 502, 503, 504):
@@ -317,6 +356,7 @@ class GitHubClient:
             if isinstance(items, list) and len(items) < 100:
                 return
             page += 1
+
 
 # =========================
 # GitHub endpoints
@@ -1337,13 +1377,15 @@ def build_stage1_rows_for_repo(gh: GitHubClient, full_name: str, repo_url: str) 
     return out_rows, stats
 
 def main() -> None:
-    tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
+    loaded_tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
+    tokens = external_repo_tokens()
     gh = GitHubClient(tokens)
 
     print(f"Stage1 ROOT_DIR: {ROOT_DIR}")
     print(f"Stage1 input CSV: {IN_URL_LIST_CSV}")
     print(f"Stage1 output CSV: {OUT_STAGE1_CSV}")
-    print(f"Stage1 token sources loaded: {len(tokens)}")
+    print(f"Stage1 token sources loaded: {len(loaded_tokens)}")
+    print(f"Stage1 cross-repo auth modes: {["GH_PAT" if t else "unauthenticated" for t in tokens]}")
 
     url_rows, url_fields = read_csv_rows(IN_URL_LIST_CSV)
     if not url_rows:
