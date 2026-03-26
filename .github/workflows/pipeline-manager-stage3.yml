@@ -59,8 +59,8 @@ jobs:
           python scripts/prepare_stage3_shards.py \
             --run-inventory data/processed/run_inventory.csv \
             --run-per-style data/processed/run_inventory_per_style.csv \
-            --output-root data/processed/stage3_shards \
-            --chunk-size "${{ inputs.chunk_size }}"
+            --chunk-size "${{ inputs.chunk_size }}" \
+            --out-dir data/processed/stage3_shards
 
       - name: Show prepared Stage 3 shards
         run: |
