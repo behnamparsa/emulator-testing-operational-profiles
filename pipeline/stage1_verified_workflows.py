@@ -1385,8 +1385,8 @@ def main() -> None:
     print(f"Stage1 input CSV: {IN_URL_LIST_CSV}")
     print(f"Stage1 output CSV: {OUT_STAGE1_CSV}")
     print(f"Stage1 token sources loaded: {len(loaded_tokens)}")
-    print(f"Stage1 cross-repo auth modes: {["GH_PAT" if t else "unauthenticated" for t in tokens]}")
-
+    auth_modes = ["GH_PAT" if t else "unauthenticated" for t in tokens]
+    print(f"Stage1 cross-repo auth modes: {auth_modes}")
     url_rows, url_fields = read_csv_rows(IN_URL_LIST_CSV)
     if not url_rows:
         raise RuntimeError("URL_List.csv is empty.")
