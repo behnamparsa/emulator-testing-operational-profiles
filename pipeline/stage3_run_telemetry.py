@@ -182,7 +182,7 @@ def read_env_tokens(path: Path) -> List[str]:
 
 
 def read_csv_rows(path: Path) -> List[Dict[str, str]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as f:
+    with path.open("r", encoding="utf-8", newline="") as f:
         rdr = csv.DictReader(f)
         out = []
         for r in rdr:
@@ -196,7 +196,7 @@ def read_csv_rows(path: Path) -> List[Dict[str, str]]:
 
 def write_csv(path: Path, fieldnames: List[str], rows: List[Dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8-sig", newline="") as f:
+    with path.open("w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         w.writeheader()
         for r in rows:
