@@ -1,86 +1,39 @@
 # ============================================================
-# Stage 2 V18 (CURRENT STUDY ALIGNED, AUXILIARY COMPLEXITY ENHANCED)
-# Durable Layer-1 instrumentation-envelope inventory + run×style inventory
+# Stage 2 (ADJUSTED): Run inventory + anchored fallback metrics (S2_)
 #
-# V18 purpose
-# ------------------------------------------------------------
-# Keep the current study unit unchanged:
-#   - Stage 2 = durable Layer-1 run inventory + run×style inventory
-#   - Stage 3 = precise Layer-2 measured from step telemetry
+# What changed in this version
+# - Uses workflow_id (NOT workflow_identifier) to list runs (more reliable)
+# - Removes Stage-2 fields that are not present in current Stage-1 output
+#   (gmd_capable, gmd_reasons, evidence_labels, label_source, workflow_name)
+# - Adds anchored runtime-step matching using Stage-1:
+#     test_invocation_step_names
+#   This improves fallback timing (especially TTFTS)
+# - Keeps regex fallback (step/job) for coverage
+# - Stage-2 heuristics updated to better align with Stage-1 labels
+#   (includes Detox / Flutter wording in runtime step-name heuristics)
 #
-# New in V18
-# ------------------------------------------------------------
-# Adds auxiliary fields to better expose and control for:
-#   - repeated same-style execution within a run
-#   - matrix-expanded jobs
-#   - parallel same-style execution
-#   - invocation-like multiplicity proxies at Stage 2
+# NEW (for modified TTFTS readiness)
+# - Pass-through Stage-1 extra anchor-position field if present:
+#     jobs_before_anchor_count
+# - Adds anchor-job timing outputs for job-based TTFTS:
+#     anchor_job_name
+#     anchor_job_started_at
+#     anchor_job_start_source
+#     time_to_first_instru_from_anchor_job_seconds
+#     time_to_first_instru_from_anchor_job_quality
+# - Adds S2_ mirrors for the above so Stage 3 can consume them as fallback
 #
-# These fields are descriptive/supportive only.
-# They do NOT change the primary Stage-2 Layer-1 decomposition.
+# NEW (ONLY): carries Stage-1 called-file instrumentation evidence fields
+#   so Stage 3 can use them directly without re-following every file:
+#     called_instru_signal
+#     called_instru_file_paths
+#     called_instru_origin_refs
+#     called_instru_origin_step_names
+#     called_instru_file_types
 #
-# Core study structure
-# 1) Layer 1 decomposition  (Stage 2 durable, job-level)
-# 2) Layer 2 decomposition  (Stage 3 precise, step-level; revised)
-# 3) Auxiliary labeling / complexity fields
-#
-# ------------------------------------------------------------
-# Layer 1 (Stage 2, durable, broad, job-level)
-#
-#   Run Duration
-# = Time to Instrumentation Envelope
-# + Instrumentation Job Envelope
-# + Post-Instrumentation Tail
-#
-# where:
-#   Time to Instrumentation Envelope
-#     = run start -> first instrumentation-related job start
-#
-#   Instrumentation Job Envelope
-#     = first instrumentation-related job start -> last instrumentation-related job end
-#
-#   Post-Instrumentation Tail
-#     = last instrumentation-related job end -> run end
-#
-# ------------------------------------------------------------
-# Layer 2 (Stage 3 onward, revised, precise, step-level)
-#
-#   Run Duration
-# = Pre-Invocation
-# + Invocation Execution Window
-# + Post-Invocation
-#
-# where:
-#   Pre-Invocation
-#     = run start -> matched invocation step start
-#
-#   Invocation Execution Window
-#     = style-relevant execution interval centered on the invocation anchor
-#
-#   Post-Invocation
-#     = instrumentation execution end -> run completion
-#
-# IMPORTANT ALIGNMENT NOTE
-# - Stage 2 does NOT directly measure Layer 2.
-# - Stage 2 remains a durable Layer-1 inventory only.
-# - However, Stage 2 exposes broad job-level proxy aliases aligned to the
-#   revised Layer 2 naming for downstream compatibility:
-#
-#     pre_invocation_seconds_proxy
-#     invocation_execution_window_seconds_proxy
-#     post_invocation_seconds_proxy
-#
-# - These proxies are BROAD JOB-LEVEL approximations, not precise step-level values.
-#
-# Anchor concept
-# - "Anchor job" is retained as the earliest strongest invocation-carrying job
-# - It remains a semantic reference point only
-# - The Layer-1 middle component is the broader instrumentation envelope,
-#   not necessarily the anchor job alone
-#
-# Outputs
-# - run_inventory.csv                (run-level durable inventory)
-# - run_inventory_per_style.csv      (run × style durable Layer-1 inventory)
+# Output:
+# - Keeps legacy metrics columns
+# - Adds S2_ mirror/fallback fields for Stage 3 consumption
 # ============================================================
 
 import csv
@@ -90,7 +43,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Set, Union, Tuple
 
 import requests
 from config.runtime import get_root_dir, get_tokens_env_path, load_github_tokens
@@ -109,9 +62,7 @@ TOKENS_ENV_PATH = get_tokens_env_path()
 ROOT_DIR = get_root_dir()
 
 IN_VERIFIED_WORKFLOWS_CSV = ROOT_DIR / "verified_workflows_v16.csv"
-
 OUT_RUN_INVENTORY_CSV = ROOT_DIR / "run_inventory.csv"
-OUT_RUN_PER_STYLE_CSV = ROOT_DIR / "run_inventory_per_style.csv"
 
 DEFAULT_BRANCH_ONLY = True
 PROCESS_ONLY_LOOKS_LIKE_INSTRU = True
@@ -134,63 +85,8 @@ SLEEP_BETWEEN_WORKFLOWS_SEC = 0.05
 # =========================
 # Helpers
 # =========================
-STYLE_CANONICAL = ["Community", "Custom", "GMD", "Third-Party", "Real-Device"]
-
-STYLE_ALIASES = {
-    "community": "Community",
-    "custom": "Custom",
-    "gmd": "GMD",
-    "third party": "Third-Party",
-    "third-party": "Third-Party",
-    "third_party": "Third-Party",
-    "thirdparty": "Third-Party",
-    "3p": "Third-Party",
-    "real device": "Real-Device",
-    "real-device": "Real-Device",
-    "real_device": "Real-Device",
-    "realdevice": "Real-Device",
-
-    "emu community": "Community",
-    "emulator community": "Community",
-    "emu_custom": "Custom",
-    "emu custom": "Custom",
-    "emulator custom": "Custom",
-    "real devices": "Real-Device",
-    "real-devices": "Real-Device",
-    "real_devices": "Real-Device",
-    "realdevices": "Real-Device",
-}
-
-
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def norm(s: Optional[str]) -> str:
-    return (s or "").strip()
-
-
-def low(s: Optional[str]) -> str:
-    return norm(s).lower()
-
-
-def canon_key(s: Optional[str]) -> str:
-    x = low(s).replace("_", " ").replace("-", " ")
-    x = re.sub(r"\s+", " ", x).strip()
-    return x
-
-
-def normalize_style_label(s: Optional[str]) -> str:
-    return STYLE_ALIASES.get(canon_key(s), norm(s))
-
-
-def split_styles(s: Optional[str]) -> List[str]:
-    raw = norm(s)
-    if not raw:
-        return []
-    vals = [normalize_style_label(x) for x in re.split(r"[|,;/]+", raw) if norm(x)]
-    return unique_preserve([v for v in vals if v in STYLE_CANONICAL])
-
 
 def iso_to_dt(iso: Optional[str]) -> Optional[datetime]:
     if not iso:
@@ -199,7 +95,6 @@ def iso_to_dt(iso: Optional[str]) -> Optional[datetime]:
         return datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
     except Exception:
         return None
-
 
 def dt_to_seconds(a: Optional[datetime], b: Optional[datetime]) -> Optional[int]:
     if not a or not b:
@@ -210,19 +105,16 @@ def dt_to_seconds(a: Optional[datetime], b: Optional[datetime]) -> Optional[int]
     except Exception:
         return None
 
-
 def ensure_csv_header(csv_path: Path, fieldnames: List[str]) -> None:
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)
         w.writeheader()
 
-
 def append_row(csv_path: Path, fieldnames: List[str], row: Dict) -> None:
     with csv_path.open("a", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-        w.writerow({k: row.get(k, "") for k in fieldnames})
-
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writerow(row)
 
 def load_existing_keys(csv_path: Path, key_field: str) -> Set[str]:
     keys: Set[str] = set()
@@ -231,48 +123,35 @@ def load_existing_keys(csv_path: Path, key_field: str) -> Set[str]:
     with csv_path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
         rdr = csv.DictReader(f)
         for row in rdr:
-            k = norm(row.get(key_field))
+            k = (row.get(key_field) or "").strip()
             if k:
                 keys.add(k)
     return keys
 
+def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
+    """CI-safe token loader.
+    - In GitHub Actions, reads GH_PAT/GITHUB_TOKEN from environment.
+    - Locally, will also read from env_path if it exists.
+    """
+    return load_github_tokens(env_path=env_path, max_tokens=max_tokens)
 
 def unique_preserve(seq: Iterable[str]) -> List[str]:
     seen: Set[str] = set()
     out: List[str] = []
     for x in seq:
-        s = norm(str(x))
-        if not s:
+        if x is None:
             continue
+        s = str(x)
         if s not in seen:
             seen.add(s)
             out.append(s)
     return out
 
-
-def safe_join_names(names: List[str], max_len: int = 800) -> str:
-    s = ",".join(unique_preserve(names))
-    return s if len(s) <= max_len else s[: max_len - 3] + "..."
-
-
-def read_env_tokens(path: Path) -> List[str]:
-    if not path.exists():
-        raise FileNotFoundError(f"Tokens env file not found: {path}")
-    toks: List[str] = []
-    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        k = k.strip()
-        v = v.strip().strip('"').strip("'")
-        if k.startswith("GITHUB_TOKEN") and v:
-            toks.append(v)
-            if len(toks) >= MAX_TOKENS_TO_USE:
-                break
-    if not toks:
-        raise ValueError(f"No GitHub tokens found in {path}")
-    return toks
+def safe_join_names(names: List[str], max_len: int = 700) -> str:
+    s = ",".join(unique_preserve([n.strip() for n in names if n and str(n).strip()]))
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 3] + "..."
 
 
 # =========================
@@ -281,22 +160,25 @@ def read_env_tokens(path: Path) -> List[str]:
 _NORM_WS_RE = re.compile(r"\s+")
 _NORM_PUNCT_RE = re.compile(r"[\[\]\(\)\{\}:;|]+")
 
-
 def normalize_name(s: str) -> str:
     x = (s or "").strip().strip('"').strip("'").lower()
     x = _NORM_PUNCT_RE.sub(" ", x)
     x = _NORM_WS_RE.sub(" ", x).strip()
     return x
 
-
 def parse_anchor_step_names(csv_value: str) -> List[str]:
     if not csv_value:
         return []
     raw = [p.strip() for p in str(csv_value).split(",")]
-    return unique_preserve([r for r in raw if r])
-
+    out = [r for r in raw if r]
+    return unique_preserve(out)
 
 def anchored_step_match(runtime_step_name: str, anchor_names: List[str]) -> bool:
+    """
+    Robust but conservative:
+    - exact normalized match
+    - contains match either direction for matrix/appended labels
+    """
     rn = normalize_name(runtime_step_name)
     if not rn:
         return False
@@ -304,7 +186,9 @@ def anchored_step_match(runtime_step_name: str, anchor_names: List[str]) -> bool
         an = normalize_name(a)
         if not an:
             continue
-        if rn == an or an in rn or rn in an:
+        if rn == an:
+            return True
+        if an in rn or rn in an:
             return True
     return False
 
@@ -318,14 +202,13 @@ class TokenState:
     remaining: Optional[int] = None
     reset_epoch: Optional[int] = None
 
-
 class GitHubClient:
     def __init__(self, tokens: List[str]) -> None:
         self.session = requests.Session()
         self.session.headers.update({
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "run-inventory-stage2-v18-layer1-envelope-auxiliary/1.0",
+            "User-Agent": "run-inventory-stage2-v16/1.5",
         })
         self.tokens = [TokenState(t) for t in tokens]
 
@@ -379,7 +262,6 @@ class GitHubClient:
                     st.remaining = int(rem)
                 except Exception:
                     pass
-
             rst = resp.headers.get("X-RateLimit-Reset")
             if rst is not None:
                 try:
@@ -399,7 +281,7 @@ class GitHubClient:
                 except Exception:
                     pass
 
-            text_l = low(resp.text or "")
+            text_l = (resp.text or "").lower()
             if resp.status_code in (403, 429) and (
                 "rate limit" in text_l
                 or "secondary rate limit" in text_l
@@ -452,14 +334,12 @@ def get_repo_default_branch(gh: GitHubClient, full_name: str) -> str:
     data = gh.request_json("GET", f"https://api.github.com/repos/{full_name}")
     if not data or not isinstance(data, dict):
         return ""
-    return norm(data.get("default_branch"))
-
+    return (data.get("default_branch") or "").strip()
 
 def list_workflow_runs(gh: GitHubClient, full_name: str, workflow_id_or_file: str, branch: Optional[str]) -> List[Dict]:
     url = f"https://api.github.com/repos/{full_name}/actions/workflows/{workflow_id_or_file}/runs"
     params = {"branch": branch} if branch else {}
     return list(gh.paginate(url, params=params, item_key="workflow_runs"))
-
 
 def list_run_jobs(gh: GitHubClient, full_name: str, run_id: int) -> List[Dict]:
     url = f"https://api.github.com/repos/{full_name}/actions/runs/{run_id}/jobs"
@@ -467,200 +347,13 @@ def list_run_jobs(gh: GitHubClient, full_name: str, run_id: int) -> List[Dict]:
 
 
 # =========================
-# Job / step heuristics
+# Run timing from jobs window
 # =========================
-THIRD_PARTY_PROVIDER_RE = re.compile(
-    r"(browserstack|sauce\s*labs|saucelabs|kobiton|headspin|bitbar|perfecto|lambdatest|genymotion\s*cloud|firebase\s*test\s*lab)",
-    re.I,
-)
-THIRD_PARTY_LIFECYCLE_RE = re.compile(
-    r"(start|stop|upload|download|results?|report|reports|session|app url|build id|device logs?|summary|finali[sz]e)",
-    re.I,
-)
-THIRD_PARTY_INVOKE_RE = re.compile(
-    r"(firebase\s+test\s+android\s+run|gcloud\s+firebase\s+test\s+android\s+run|flank\s+android\s+run|appcenter\s+test\s+run|saucectl\s+(run|test)|browserstack|maestro\s+cloud)",
-    re.I,
-)
-GMD_RE = re.compile(r"(manageddevice|gmd|gradle managed device|managed device)", re.I)
-COMMUNITY_RE = re.compile(
-    r"(android-emulator-runner|emulator runner|create avd|avd|start emulator|emulator|connectedcheck|connectedandroidtest|androidtest)",
-    re.I,
-)
-CUSTOM_RE = re.compile(
-    r"(detox|flutter.*integration|integration test|baseline.?profile|macrobenchmark|uiautomator|espresso|instrumentation)",
-    re.I,
-)
-GENERIC_INSTRU_RE = re.compile(
-    r"(connectedcheck|connectedandroidtest|androidtest|instrumentation|manageddevice|gmd|detox|flutter.*integration|integration test|baseline.?profile|macrobenchmark|uiautomator|espresso|emulator|avd|firebase test|test lab|device farm)",
-    re.I,
-)
-ARTIFACT_STEP_RE = re.compile(
-    r"(upload-artifact|download-artifact|artifact|test-results|test results|results|report|reports|logs?|summary)",
-    re.I,
-)
-
-
-def get_job_runtime_text(job: Dict) -> str:
-    vals: List[str] = []
-    vals.append(norm(job.get("name")))
-    for st in (job.get("steps") or []):
-        vals.append(norm(st.get("name")))
-    return " | ".join([v for v in vals if v])
-
-
-def job_base_name(job_name: str) -> str:
-    """
-    Collapse common matrix-expanded job suffixes:
-      build (Foss) -> build
-      test [api35] -> test
-    """
-    x = norm(job_name)
-    if not x:
-        return ""
-    x = re.sub(r"\s+\([^)]*\)\s*$", "", x).strip()
-    x = re.sub(r"\s+\[[^\]]*\]\s*$", "", x).strip()
-    return x
-
-
-def is_matrix_like_job_name(job_name: str) -> bool:
-    x = norm(job_name)
-    if not x:
-        return False
-    base = job_base_name(x)
-    return bool(base and base != x)
-
-
-def detect_job_style_tags(job: Dict, declared_styles: List[str], anchor_step_names: List[str]) -> Tuple[bool, List[str], str]:
-    """
-    Returns:
-      is_instru_related_job, matched_styles, detect_method
-
-    V18 framing:
-    - Stage 2 is still a broad Layer-1 detector of instrumentation-related jobs
-    - continuation/finalization jobs may still belong to the broad instrumentation envelope
-    - auxiliary fields now expose multiplicity/complexity for repeated same-style cases
-    """
-    text = get_job_runtime_text(job)
-    steps = job.get("steps") if isinstance(job.get("steps"), list) else []
-
-    anchor_hit = False
-    for st in steps:
-        step_name = norm(st.get("name"))
-        if step_name and anchored_step_match(step_name, anchor_step_names):
-            anchor_hit = True
-            break
-
-    generic_instru = bool(GENERIC_INSTRU_RE.search(text))
-    tp_hit = bool(THIRD_PARTY_PROVIDER_RE.search(text))
-    tp_lifecycle = bool(THIRD_PARTY_LIFECYCLE_RE.search(text))
-    gmd_hit = bool(GMD_RE.search(text))
-    community_hit = bool(COMMUNITY_RE.search(text))
-    custom_hit = bool(CUSTOM_RE.search(text))
-    artifact_hit = bool(ARTIFACT_STEP_RE.search(text))
-    real_device_hit = bool(re.search(r"(firebase test lab|device farm|real device)", text, re.I))
-
-    matched_styles: List[str] = []
-
-    if "Third-Party" in declared_styles and (tp_hit or (artifact_hit and tp_lifecycle)):
-        matched_styles.append("Third-Party")
-    if "GMD" in declared_styles and gmd_hit:
-        matched_styles.append("GMD")
-    if "Community" in declared_styles and community_hit:
-        matched_styles.append("Community")
-    if "Custom" in declared_styles and custom_hit:
-        matched_styles.append("Custom")
-    if "Real-Device" in declared_styles and real_device_hit:
-        matched_styles.append("Real-Device")
-
-    matched_styles = unique_preserve(matched_styles)
-
-    is_instru_related_job = False
-    detect_method = "none"
-
-    if anchor_hit:
-        is_instru_related_job = True
-        detect_method = "step_name_anchor"
-    elif generic_instru or tp_hit:
-        is_instru_related_job = True
-        detect_method = "job_or_step_text_third_party" if tp_hit else "job_or_step_text_regex"
-    elif artifact_hit and tp_hit and tp_lifecycle:
-        is_instru_related_job = True
-        detect_method = "third_party_lifecycle_artifact"
-    elif artifact_hit and len(declared_styles) == 1 and generic_instru:
-        is_instru_related_job = True
-        detect_method = "artifact_plus_instru_text"
-
-    if is_instru_related_job and not matched_styles and len(declared_styles) == 1:
-        matched_styles = declared_styles[:]
-        detect_method = detect_method + "_single_declared_style"
-
-    return is_instru_related_job, matched_styles, detect_method
-
-
-def step_is_invocation_candidate(step_name: str, target_style: str, anchor_step_names: List[str]) -> bool:
-    s = norm(step_name)
-    if not s:
-        return False
-    if anchored_step_match(s, anchor_step_names):
-        return True
-
-    style = normalize_style_label(target_style)
-    if style == "Third-Party":
-        return bool(THIRD_PARTY_INVOKE_RE.search(s) or THIRD_PARTY_PROVIDER_RE.search(s))
-    if style == "GMD":
-        return bool(GMD_RE.search(s))
-    if style == "Community":
-        return bool(COMMUNITY_RE.search(s))
-    if style == "Custom":
-        return bool(CUSTOM_RE.search(s))
-
-    return bool(GENERIC_INSTRU_RE.search(s))
-
-
-def compute_parallel_overlap_stats(windows: List[Tuple[Optional[datetime], Optional[datetime]]]) -> Tuple[bool, int]:
-    """
-    Returns:
-      has_overlap, max_parallel
-    """
-    events: List[Tuple[datetime, int]] = []
-    for sdt, edt in windows:
-        if not sdt or not edt:
-            continue
-        if edt < sdt:
-            continue
-        events.append((sdt, +1))
-        events.append((edt, -1))
-
-    if not events:
-        return False, 0
-
-    # Start before end on ties
-    events.sort(key=lambda x: (x[0], -x[1]))
-
-    current = 0
-    max_parallel = 0
-    has_overlap = False
-    for _t, delta in events:
-        current += delta
-        if current > max_parallel:
-            max_parallel = current
-        if current >= 2:
-            has_overlap = True
-
-    return has_overlap, max_parallel
-
-
-# =========================
-# Timing helpers
-# =========================
-def compute_run_window_from_jobs(
-    jobs: List[Dict],
-    run_started_at: str,
-    run_updated_at: str,
-) -> Tuple[str, str, Optional[int], str]:
+def compute_run_window_from_jobs(jobs: List[Dict]) -> Tuple[str, str, Optional[int]]:
+    if not jobs:
+        return "", "", None
     starts: List[datetime] = []
     ends: List[datetime] = []
-
     for j in jobs:
         sdt = iso_to_dt(j.get("started_at"))
         edt = iso_to_dt(j.get("completed_at"))
@@ -668,538 +361,323 @@ def compute_run_window_from_jobs(
             starts.append(sdt)
         if edt:
             ends.append(edt)
-
-    run_start_dt = iso_to_dt(run_started_at)
-    run_end_dt = iso_to_dt(run_updated_at)
-
-    if not run_start_dt and starts:
-        run_start_dt = min(starts)
-    if not run_end_dt and ends:
-        run_end_dt = max(ends)
-
-    source = "run_api"
-    if run_start_dt and run_end_dt and not (iso_to_dt(run_started_at) and iso_to_dt(run_updated_at)):
-        source = "hybrid_run_api_jobs"
-    elif not (iso_to_dt(run_started_at) and iso_to_dt(run_updated_at)) and starts and ends:
-        source = "jobs_window"
-
+    if not starts or not ends:
+        return "", "", None
+    smin = min(starts)
+    emax = max(ends)
     return (
-        run_start_dt.isoformat().replace("+00:00", "Z") if run_start_dt else "",
-        run_end_dt.isoformat().replace("+00:00", "Z") if run_end_dt else "",
-        dt_to_seconds(run_start_dt, run_end_dt),
-        source if run_start_dt and run_end_dt else "missing",
+        smin.isoformat().replace("+00:00", "Z"),
+        emax.isoformat().replace("+00:00", "Z"),
+        dt_to_seconds(smin, emax),
     )
 
 
-def pick_anchor_job(
-    jobs: List[Dict],
-    declared_styles: List[str],
-    anchor_step_names: List[str],
-) -> Tuple[Optional[Dict], str, List[str]]:
-    """
-    Pick the earliest instrumentation-related job in the run.
-    Returns:
-      anchor_job, detect_method, all_instru_related_job_names
-    """
-    candidates: List[Tuple[datetime, Dict, str]] = []
-    all_instru_related_job_names: List[str] = []
-
-    for j in jobs:
-        is_instru_related_job, _matched_styles, detect_method = detect_job_style_tags(
-            job=j,
-            declared_styles=declared_styles,
-            anchor_step_names=anchor_step_names,
-        )
-        if not is_instru_related_job:
-            continue
-
-        jname = norm(j.get("name"))
-        if jname:
-            all_instru_related_job_names.append(jname)
-
-        js = iso_to_dt(j.get("started_at"))
-        if js:
-            candidates.append((js, j, detect_method))
-
-    if not candidates:
-        return None, "none", unique_preserve(all_instru_related_job_names)
-
-    candidates.sort(key=lambda x: x[0])
-    _dt, anchor_job, detect_method = candidates[0]
-    return anchor_job, detect_method, unique_preserve(all_instru_related_job_names)
+# =========================
+# Stage-2 runtime heuristics (aligned better with Stage 1)
+# =========================
+INSTRU_STEP_NAME_RE = re.compile(
+    r"("
+    r"instrument|"
+    r"connected.*androidtest|androidtest|manageddevice|gmd|"
+    r"baseline.?profile|"
+    r"adb|"
+    r"emulator runner|android emulator|avd|"
+    r"firebase test|test lab|device farm|"
+    r"uiautomator|espresso|"
+    r"detox|"
+    r"flutter.*(integration|drive)|integration test"
+    r")",
+    re.IGNORECASE,
+)
+INSTRU_JOB_NAME_RE = re.compile(
+    r"("
+    r"instrument|androidtest|connected|manageddevice|gmd|"
+    r"baseline|"
+    r"emulator|avd|"
+    r"firebase|test lab|device farm|"
+    r"detox|flutter.*integration"
+    r")",
+    re.IGNORECASE,
+)
 
 
 # =========================
-# Inventory builders
+# Instrumentation metrics from jobs/steps
 # =========================
-def build_run_level_metrics(
+def infer_instru_metrics_from_jobs(
     jobs: List[Dict],
     run_created_at: str,
     run_started_at: str,
-    run_updated_at: str,
-    anchor_step_names: List[str],
-    declared_styles: List[str],
-) -> Dict[str, Union[str, int, None]]:
+    anchor_step_names: Optional[List[str]] = None,
+) -> Dict[str, Union[str, int, float, None]]:
     """
-    Run-level durable Layer-1 metrics for V18:
-    - broad instrumentation job envelope
-    - anchor job retained as semantic reference
-    - Layer-2-aligned proxy aliases exposed for downstream convenience,
-      but still based on Layer-1 broad job telemetry
-    - auxiliary multiplicity/matrix/parallel complexity fields added
+    Priority:
+      1) Stage-1 anchored runtime step-name match (step_name_anchor)
+      2) Regex step-name match (step_regex)
+      3) Regex job-name match (job_regex)
+
+    NEW:
+      - Captures anchor-job timing for modified TTFTS:
+          anchor_job_name
+          anchor_job_started_at
+          anchor_job_start_source
+          time_to_first_instru_from_anchor_job_seconds
+          time_to_first_instru_from_anchor_job_quality
     """
-    out: Dict[str, Union[str, int, None]] = {
-        "queue_seconds": None,
+    anchor_step_names = anchor_step_names or []
+
+    out = {
+        "instru_conclusion": "unknown",
+        "instru_detect_method": "none",
+        "instru_duration_seconds": None,
         "run_duration_seconds": None,
         "runner_labels_union": "",
+        "queue_seconds": None,
+        "time_to_first_instru_seconds": None,
         "instru_job_count": 0,
+        "instru_step_count": 0,
         "instru_job_names": "",
-        "instru_detect_method": "none",
-
-        # broad instrumentation envelope
+        "instru_step_names": "",
+        "instru_total_seconds": None,
+        "instru_window_seconds": None,
         "instru_first_started_at": "",
         "instru_last_completed_at": "",
-        "instru_window_seconds": None,
+        "instru_share_of_run": None,
 
-        "time_to_instrumentation_envelope_seconds": None,
-        "instrumentation_job_envelope_seconds": None,
-        "post_instrumentation_tail_seconds": None,
-        "layer1_model": "instrumentation_job_envelope",
-        "layer1_proxy_quality": "missing",
-
-        # anchor job retained as reference point
+        # NEW anchor-job fields
         "anchor_job_name": "",
         "anchor_job_started_at": "",
-        "anchor_job_completed_at": "",
-        "anchor_job_source": "missing",
-
-        # revised broad proxy aliases
-        "pre_invocation_seconds_proxy": None,
-        "invocation_execution_window_seconds_proxy": None,
-        "post_invocation_seconds_proxy": None,
-
-        # backward-friendly legacy aliases
-        "time_to_invocation_seconds_proxy": None,
-        "invocation_tail_seconds_proxy": None,
-        "time_to_first_instru_seconds": None,
         "anchor_job_start_source": "missing",
         "time_to_first_instru_from_anchor_job_seconds": None,
         "time_to_first_instru_from_anchor_job_quality": "missing",
-
-        # new V18 run-level auxiliary fields
-        "instru_distinct_job_count": 0,
-        "instru_distinct_job_base_name_count": 0,
-        "instru_matrix_like_job_count": 0,
-        "instru_matrix_expanded_flag": "false",
-        "instru_parallel_jobs_flag": "false",
-        "instru_max_parallel_jobs": 0,
     }
 
     out["queue_seconds"] = dt_to_seconds(iso_to_dt(run_created_at), iso_to_dt(run_started_at))
+    if not jobs:
+        return out
 
-    run_start_eff, run_end_eff, run_dur_eff, _ = compute_run_window_from_jobs(
-        jobs=jobs,
-        run_started_at=run_started_at,
-        run_updated_at=run_updated_at,
-    )
-    out["run_duration_seconds"] = run_dur_eff
-
+    starts, ends = [], []
     labels_union: Set[str] = set()
-    instru_related_job_names: List[str] = []
-    instru_related_job_base_names: List[str] = []
-    instru_starts: List[Tuple[datetime, str, str]] = []
-    instru_ends: List[Tuple[datetime, str, str]] = []
-    instru_windows: List[Tuple[Optional[datetime], Optional[datetime]]] = []
+    for j in jobs:
+        sdt = iso_to_dt(j.get("started_at"))
+        edt = iso_to_dt(j.get("completed_at"))
+        if sdt:
+            starts.append(sdt)
+        if edt:
+            ends.append(edt)
+        for lab in (j.get("labels") or []):
+            if isinstance(lab, str) and lab.strip():
+                labels_union.add(lab.strip())
+
+    run_dur = dt_to_seconds(min(starts) if starts else None, max(ends) if ends else None)
+    out["run_duration_seconds"] = run_dur
+    out["runner_labels_union"] = ",".join(sorted(labels_union))
+
+    candidates: List[Dict[str, Union[int, str, datetime, None]]] = []
+    instru_job_names: List[str] = []
+    instru_step_names: List[str] = []
+
+    def add_candidate(
+        priority: int,
+        method: str,
+        conclusion: str,
+        dur: Optional[int],
+        sdt: Optional[datetime],
+        edt: Optional[datetime],
+        job_name: str,
+        step_name: str,
+        job_sdt: Optional[datetime],
+        job_earliest_step_sdt: Optional[datetime],
+    ) -> None:
+        candidates.append({
+            "priority": priority,
+            "method": method,
+            "conclusion": conclusion or "unknown",
+            "dur": dur,
+            "sdt": sdt,
+            "edt": edt,
+            "job_name": job_name,
+            "step_name": step_name,
+            "job_sdt": job_sdt,
+            "job_earliest_step_sdt": job_earliest_step_sdt,
+        })
 
     for j in jobs:
-        for lab in (j.get("labels") or []):
-            if isinstance(lab, str) and norm(lab):
-                labels_union.add(norm(lab))
+        job_name = (j.get("name") or "").strip()
+        job_is_instru_regex = bool(INSTRU_JOB_NAME_RE.search(job_name))
+        job_sdt = iso_to_dt(j.get("started_at"))
+        job_edt = iso_to_dt(j.get("completed_at"))
+        job_dur = dt_to_seconds(job_sdt, job_edt)
 
-        is_instru_related_job, _styles, detect_method = detect_job_style_tags(
-            job=j,
-            declared_styles=declared_styles,
-            anchor_step_names=anchor_step_names,
-        )
-        if not is_instru_related_job:
-            continue
+        steps = j.get("steps") if isinstance(j.get("steps"), list) else []
 
-        jname = norm(j.get("name"))
-        jbase = job_base_name(jname)
-        js = iso_to_dt(j.get("started_at"))
-        je = iso_to_dt(j.get("completed_at"))
+        # earliest actual step start in this job (fallback if job.started_at missing)
+        job_earliest_step_sdt: Optional[datetime] = None
+        for stx in steps:
+            s0 = iso_to_dt(stx.get("started_at"))
+            if s0 and (job_earliest_step_sdt is None or s0 < job_earliest_step_sdt):
+                job_earliest_step_sdt = s0
 
-        if jname:
-            instru_related_job_names.append(jname)
-            instru_related_job_base_names.append(jbase or jname)
-        if js:
-            instru_starts.append((js, jname, detect_method))
-        if je:
-            instru_ends.append((je, jname, detect_method))
-        instru_windows.append((js, je))
+        any_step_candidate_here = False
+        for st in steps:
+            step_name = (st.get("name") or "").strip()
+            if not step_name:
+                continue
 
-    out["runner_labels_union"] = ",".join(sorted(labels_union))
-    out["instru_job_names"] = safe_join_names(instru_related_job_names)
-    out["instru_job_count"] = len(unique_preserve(instru_related_job_names))
-    out["instru_distinct_job_count"] = len(unique_preserve(instru_related_job_names))
-    out["instru_distinct_job_base_name_count"] = len(unique_preserve(instru_related_job_base_names))
-    out["instru_matrix_like_job_count"] = sum(1 for n in unique_preserve(instru_related_job_names) if is_matrix_like_job_name(n))
+            is_anchor = anchored_step_match(step_name, anchor_step_names) if anchor_step_names else False
+            is_regex = bool(INSTRU_STEP_NAME_RE.search(step_name))
 
-    if (
-        out["instru_distinct_job_count"] is not None
-        and out["instru_distinct_job_base_name_count"] is not None
-        and int(out["instru_distinct_job_count"]) > int(out["instru_distinct_job_base_name_count"])
-    ):
-        out["instru_matrix_expanded_flag"] = "true"
+            if not (is_anchor or is_regex):
+                continue
 
-    has_parallel, max_parallel = compute_parallel_overlap_stats(instru_windows)
-    out["instru_parallel_jobs_flag"] = "true" if has_parallel else "false"
-    out["instru_max_parallel_jobs"] = max_parallel
+            any_step_candidate_here = True
+            if job_name:
+                instru_job_names.append(job_name)
+            instru_step_names.append(step_name)
 
-    run_start_dt = iso_to_dt(run_start_eff)
-    run_end_dt = iso_to_dt(run_end_eff)
+            st_sdt = iso_to_dt(st.get("started_at")) or job_sdt or job_earliest_step_sdt
+            st_edt = iso_to_dt(st.get("completed_at")) or job_edt
+            st_dur = dt_to_seconds(iso_to_dt(st.get("started_at")), iso_to_dt(st.get("completed_at")))
+            if st_dur is None:
+                st_dur = job_dur
 
-    if instru_starts:
-        instru_starts.sort(key=lambda x: x[0])
-        first_dt, _first_name, first_method = instru_starts[0]
-        out["instru_first_started_at"] = first_dt.isoformat().replace("+00:00", "Z")
-        out["time_to_instrumentation_envelope_seconds"] = dt_to_seconds(run_start_dt, first_dt)
-        out["instru_detect_method"] = first_method or "job_text"
+            if is_anchor:
+                add_candidate(
+                    priority=0,
+                    method="step_name_anchor",
+                    conclusion=(st.get("conclusion") or st.get("status") or "unknown"),
+                    dur=st_dur,
+                    sdt=st_sdt,
+                    edt=st_edt,
+                    job_name=job_name,
+                    step_name=step_name,
+                    job_sdt=job_sdt,
+                    job_earliest_step_sdt=job_earliest_step_sdt,
+                )
+            else:
+                add_candidate(
+                    priority=1,
+                    method="step_regex",
+                    conclusion=(st.get("conclusion") or st.get("status") or "unknown"),
+                    dur=st_dur,
+                    sdt=st_sdt,
+                    edt=st_edt,
+                    job_name=job_name,
+                    step_name=step_name,
+                    job_sdt=job_sdt,
+                    job_earliest_step_sdt=job_earliest_step_sdt,
+                )
 
-    if instru_ends:
-        instru_ends.sort(key=lambda x: x[0])
-        last_dt, _last_name, _last_method = instru_ends[-1]
-        out["instru_last_completed_at"] = last_dt.isoformat().replace("+00:00", "Z")
-        out["post_instrumentation_tail_seconds"] = dt_to_seconds(last_dt, run_end_dt)
+        if job_is_instru_regex and not any_step_candidate_here:
+            if job_name:
+                instru_job_names.append(job_name)
+            add_candidate(
+                priority=2,
+                method="job_regex",
+                conclusion=(j.get("conclusion") or j.get("status") or "unknown"),
+                dur=job_dur,
+                sdt=job_sdt or job_earliest_step_sdt,
+                edt=job_edt,
+                job_name=job_name,
+                step_name="",
+                job_sdt=job_sdt,
+                job_earliest_step_sdt=job_earliest_step_sdt,
+            )
 
-    if out["instru_first_started_at"] and out["instru_last_completed_at"]:
-        first_dt = iso_to_dt(str(out["instru_first_started_at"]))
-        last_dt = iso_to_dt(str(out["instru_last_completed_at"]))
-        out["instru_window_seconds"] = dt_to_seconds(first_dt, last_dt)
-        out["instrumentation_job_envelope_seconds"] = out["instru_window_seconds"]
+    instru_first_start: Optional[datetime] = None
+    instru_last_end: Optional[datetime] = None
+    total_seconds = 0
+    total_seconds_any = False
 
-    anchor_job, detect_method, all_instru_job_names = pick_anchor_job(
-        jobs=jobs,
-        declared_styles=declared_styles,
-        anchor_step_names=anchor_step_names,
-    )
-    if all_instru_job_names:
-        out["instru_job_names"] = safe_join_names(all_instru_job_names)
-        out["instru_job_count"] = len(all_instru_job_names)
-        out["instru_distinct_job_count"] = len(unique_preserve(all_instru_job_names))
-        out["instru_matrix_like_job_count"] = sum(1 for n in unique_preserve(all_instru_job_names) if is_matrix_like_job_name(n))
-    if detect_method and detect_method != "none" and out["instru_detect_method"] == "none":
-        out["instru_detect_method"] = detect_method
+    if candidates:
+        def _cand_sort_key(c: Dict[str, Union[int, str, datetime, None]]) -> Tuple[int, str]:
+            p = int(c.get("priority") or 99)
+            sdt = c.get("sdt")
+            s = sdt.isoformat() if isinstance(sdt, datetime) else "9999-12-31T23:59:59+00:00"
+            return (p, s)
 
-    if anchor_job is not None:
-        anchor_name = norm(anchor_job.get("name"))
-        anchor_start_dt = iso_to_dt(anchor_job.get("started_at"))
-        anchor_end_dt = iso_to_dt(anchor_job.get("completed_at"))
+        candidates_sorted = sorted(candidates, key=_cand_sort_key)
 
-        out["anchor_job_name"] = anchor_name
-        out["anchor_job_started_at"] = anchor_start_dt.isoformat().replace("+00:00", "Z") if anchor_start_dt else ""
-        out["anchor_job_completed_at"] = anchor_end_dt.isoformat().replace("+00:00", "Z") if anchor_end_dt else ""
-        out["anchor_job_source"] = detect_method or "job_text"
+        first = candidates_sorted[0]
+        out["instru_detect_method"] = str(first.get("method") or "none")
+        out["instru_conclusion"] = str(first.get("conclusion") or "unknown")
+        out["instru_duration_seconds"] = first.get("dur") if isinstance(first.get("dur"), int) else None
 
-        out["anchor_job_start_source"] = out["anchor_job_source"]
-        out["time_to_first_instru_from_anchor_job_seconds"] = 0 if anchor_start_dt else None
-        out["time_to_first_instru_from_anchor_job_quality"] = "anchor_job_reference" if anchor_start_dt else "missing"
+        # NEW: anchor-job timing for modified TTFTS
+        anchor_job_name = str(first.get("job_name") or "")
+        anchor_step_start = first.get("sdt") if isinstance(first.get("sdt"), datetime) else None
+        anchor_job_sdt = first.get("job_sdt") if isinstance(first.get("job_sdt"), datetime) else None
+        anchor_job_earliest_step_sdt = first.get("job_earliest_step_sdt") if isinstance(first.get("job_earliest_step_sdt"), datetime) else None
 
-    out["pre_invocation_seconds_proxy"] = out["time_to_instrumentation_envelope_seconds"]
-    out["invocation_execution_window_seconds_proxy"] = out["instrumentation_job_envelope_seconds"]
-    out["post_invocation_seconds_proxy"] = out["post_instrumentation_tail_seconds"]
+        job_start_basis: Optional[datetime] = None
+        job_start_source = "missing"
+        quality = "missing"
 
-    out["time_to_invocation_seconds_proxy"] = out["time_to_instrumentation_envelope_seconds"]
-    out["invocation_tail_seconds_proxy"] = out["post_instrumentation_tail_seconds"]
-    out["time_to_first_instru_seconds"] = out["time_to_instrumentation_envelope_seconds"]
+        if anchor_job_sdt:
+            job_start_basis = anchor_job_sdt
+            job_start_source = "job_started_at"
+            quality = "exact"
+        elif anchor_job_earliest_step_sdt:
+            job_start_basis = anchor_job_earliest_step_sdt
+            job_start_source = "earliest_step_in_job"
+            quality = "inferred"
 
-    if (
-        out["time_to_instrumentation_envelope_seconds"] is not None
-        and out["instrumentation_job_envelope_seconds"] is not None
-        and out["post_instrumentation_tail_seconds"] is not None
-    ):
-        out["layer1_proxy_quality"] = "broad_job_envelope"
-    elif out["instrumentation_job_envelope_seconds"] is not None:
-        out["layer1_proxy_quality"] = "partial_broad_job_envelope"
+        if anchor_job_name:
+            out["anchor_job_name"] = anchor_job_name
+        if job_start_basis:
+            out["anchor_job_started_at"] = job_start_basis.isoformat().replace("+00:00", "Z")
+            out["anchor_job_start_source"] = job_start_source
+
+        if job_start_basis and anchor_step_start:
+            out["time_to_first_instru_from_anchor_job_seconds"] = dt_to_seconds(job_start_basis, anchor_step_start)
+            out["time_to_first_instru_from_anchor_job_quality"] = quality
+        elif anchor_step_start:
+            # last-resort if we know the step start but not the job start
+            base_run = iso_to_dt(run_started_at) or iso_to_dt(run_created_at)
+            if base_run:
+                out["time_to_first_instru_from_anchor_job_seconds"] = dt_to_seconds(base_run, anchor_step_start)
+                out["time_to_first_instru_from_anchor_job_quality"] = "run_started_fallback"
+                out["anchor_job_start_source"] = "run_started_fallback"
+
+        for c in candidates_sorted:
+            sdt = c.get("sdt") if isinstance(c.get("sdt"), datetime) else None
+            edt = c.get("edt") if isinstance(c.get("edt"), datetime) else None
+            dur = c.get("dur") if isinstance(c.get("dur"), int) else None
+
+            if sdt and (instru_first_start is None or sdt < instru_first_start):
+                instru_first_start = sdt
+            if edt and (instru_last_end is None or edt > instru_last_end):
+                instru_last_end = edt
+
+            if dur is not None:
+                total_seconds += dur
+                total_seconds_any = True
+
+    out["instru_job_names"] = safe_join_names(instru_job_names)
+    out["instru_step_names"] = safe_join_names(instru_step_names)
+    out["instru_job_count"] = len(unique_preserve(instru_job_names))
+    out["instru_step_count"] = len(unique_preserve(instru_step_names))
+
+    if total_seconds_any:
+        out["instru_total_seconds"] = total_seconds
+
+    if instru_first_start:
+        out["instru_first_started_at"] = instru_first_start.isoformat().replace("+00:00", "Z")
+        base_start = iso_to_dt(run_started_at) or iso_to_dt(run_created_at)
+        out["time_to_first_instru_seconds"] = dt_to_seconds(base_start, instru_first_start)
+
+    if instru_last_end:
+        out["instru_last_completed_at"] = instru_last_end.isoformat().replace("+00:00", "Z")
+
+    out["instru_window_seconds"] = dt_to_seconds(instru_first_start, instru_last_end)
+
+    if out["instru_window_seconds"] is not None and run_dur:
+        try:
+            out["instru_share_of_run"] = round(float(out["instru_window_seconds"]) / float(run_dur), 6)
+        except Exception:
+            out["instru_share_of_run"] = None
 
     return out
-
-
-def build_run_per_style_rows(
-    full_name: str,
-    workflow_identifier: str,
-    workflow_id: str,
-    workflow_path: str,
-    run: Dict,
-    declared_styles: List[str],
-    anchor_step_names: List[str],
-    jobs: List[Dict],
-    run_start_eff: str,
-    run_end_eff: str,
-    run_duration_eff: Optional[int],
-    run_timing_source: str,
-) -> List[Dict[str, object]]:
-    """
-    Build durable Layer-1 run × style rows for V18.
-    Core Stage-2 middle component remains the broad instrumentation envelope.
-    Revised Layer-2-aligned proxy names are exposed as broad job-level proxies only.
-    New auxiliary fields expose same-style multiplicity / matrix / parallel complexity.
-    """
-    run_start_dt = iso_to_dt(run_start_eff)
-    run_end_dt = iso_to_dt(run_end_eff)
-
-    style_to_jobs: Dict[str, List[Dict]] = {s: [] for s in declared_styles}
-    ambiguous_job_names: List[str] = []
-    all_instru_job_names_any: List[str] = []
-
-    for j in jobs:
-        is_instru_related_job, matched_styles, detect_method = detect_job_style_tags(
-            job=j,
-            declared_styles=declared_styles,
-            anchor_step_names=anchor_step_names,
-        )
-        if not is_instru_related_job:
-            continue
-
-        jname = norm(j.get("name"))
-        if jname:
-            all_instru_job_names_any.append(jname)
-
-        payload = {
-            "job": j,
-            "detect_method": detect_method,
-        }
-
-        if len(matched_styles) == 1:
-            style_to_jobs[matched_styles[0]].append(payload)
-        elif len(matched_styles) > 1:
-            if jname:
-                ambiguous_job_names.append(jname)
-        else:
-            if len(declared_styles) == 1:
-                style_to_jobs[declared_styles[0]].append({
-                    "job": j,
-                    "detect_method": detect_method + "_fallback_single_style",
-                })
-            else:
-                if jname:
-                    ambiguous_job_names.append(jname)
-
-    rows: List[Dict[str, object]] = []
-
-    multi_style_run_flag = len(declared_styles) > 1
-    all_styles_in_run = safe_join_names(declared_styles)
-    all_instru_job_names_any_s = safe_join_names(all_instru_job_names_any)
-    ambiguous_jobs_s = safe_join_names(ambiguous_job_names)
-
-    for style in declared_styles:
-        assigned = style_to_jobs.get(style, [])
-
-        assigned_job_names: List[str] = []
-        assigned_job_base_names: List[str] = []
-        detect_methods: List[str] = []
-
-        anchor_job = None
-        anchor_job_name = ""
-        anchor_job_started_at = ""
-        anchor_job_completed_at = ""
-        anchor_job_source = "missing"
-
-        anchor_job_start_dt: Optional[datetime] = None
-        anchor_job_end_dt: Optional[datetime] = None
-
-        style_first_instru_job_name = ""
-        style_first_instru_job_started_at = ""
-        style_first_instru_job_source = "missing"
-        style_last_instru_job_name = ""
-        style_last_instru_job_completed_at = ""
-        style_last_instru_job_source = "missing"
-
-        first_any_dt: Optional[datetime] = None
-        last_any_dt: Optional[datetime] = None
-
-        candidates: List[Tuple[datetime, Dict, str]] = []
-        end_candidates: List[Tuple[datetime, Dict, str]] = []
-
-        # New V18 auxiliary trackers
-        style_windows: List[Tuple[Optional[datetime], Optional[datetime]]] = []
-        style_invocation_candidate_step_names: List[str] = []
-        style_invocation_candidate_step_count = 0
-
-        for item in assigned:
-            j = item["job"]
-            detect_method = norm(item["detect_method"])
-            detect_methods.append(detect_method)
-
-            jname = norm(j.get("name"))
-            jbase = job_base_name(jname)
-            js = iso_to_dt(j.get("started_at"))
-            je = iso_to_dt(j.get("completed_at"))
-
-            if jname:
-                assigned_job_names.append(jname)
-                assigned_job_base_names.append(jbase or jname)
-
-            style_windows.append((js, je))
-
-            # job-level timing
-            if js:
-                candidates.append((js, j, detect_method))
-                if first_any_dt is None or js < first_any_dt:
-                    first_any_dt = js
-                    style_first_instru_job_name = jname
-                    style_first_instru_job_started_at = js.isoformat().replace("+00:00", "Z")
-                    style_first_instru_job_source = detect_method or "job_text"
-
-            if je:
-                end_candidates.append((je, j, detect_method))
-                if last_any_dt is None or je > last_any_dt:
-                    last_any_dt = je
-                    style_last_instru_job_name = jname
-                    style_last_instru_job_completed_at = je.isoformat().replace("+00:00", "Z")
-                    style_last_instru_job_source = detect_method or "job_text"
-
-            # step-level invocation candidate proxy counting
-            steps = j.get("steps") if isinstance(j.get("steps"), list) else []
-            for st in steps:
-                step_name = norm(st.get("name"))
-                if step_is_invocation_candidate(step_name, style, anchor_step_names):
-                    style_invocation_candidate_step_count += 1
-                    style_invocation_candidate_step_names.append(step_name)
-
-        if candidates:
-            candidates.sort(key=lambda x: x[0])
-            _dt, anchor_job, anchor_method = candidates[0]
-            anchor_job_name = norm(anchor_job.get("name"))
-            anchor_job_start_dt = iso_to_dt(anchor_job.get("started_at"))
-            anchor_job_end_dt = iso_to_dt(anchor_job.get("completed_at"))
-            anchor_job_started_at = anchor_job_start_dt.isoformat().replace("+00:00", "Z") if anchor_job_start_dt else ""
-            anchor_job_completed_at = anchor_job_end_dt.isoformat().replace("+00:00", "Z") if anchor_job_end_dt else ""
-            anchor_job_source = anchor_method or "job_text"
-
-        time_to_instrumentation_envelope = dt_to_seconds(run_start_dt, first_any_dt)
-        instrumentation_job_envelope = dt_to_seconds(first_any_dt, last_any_dt)
-        post_instrumentation_tail = dt_to_seconds(last_any_dt, run_end_dt)
-
-        segmentation_confidence = (
-            "high" if first_any_dt is not None and last_any_dt is not None and not ambiguous_job_names else
-            "medium" if first_any_dt is not None else
-            "missing"
-        )
-
-        style_distinct_job_count = len(unique_preserve(assigned_job_names))
-        style_distinct_job_base_name_count = len(unique_preserve(assigned_job_base_names))
-        style_matrix_like_job_count = sum(1 for n in unique_preserve(assigned_job_names) if is_matrix_like_job_name(n))
-        style_matrix_expanded_flag = "true" if style_distinct_job_count > style_distinct_job_base_name_count else "false"
-
-        style_parallel_same_style, style_max_parallel_jobs = compute_parallel_overlap_stats(style_windows)
-        style_parallel_same_style_flag = "true" if style_parallel_same_style else "false"
-
-        style_repeated_same_style_flag = "true" if (
-            style_distinct_job_count > 1
-            or style_invocation_candidate_step_count > 1
-            or style_matrix_expanded_flag == "true"
-        ) else "false"
-
-        if style_distinct_job_count <= 1 and style_invocation_candidate_step_count <= 1:
-            style_same_style_complexity_class = "single_path"
-        elif style_matrix_expanded_flag == "true" and style_parallel_same_style_flag == "true":
-            style_same_style_complexity_class = "matrix_parallel_repeated"
-        elif style_matrix_expanded_flag == "true":
-            style_same_style_complexity_class = "matrix_repeated"
-        elif style_distinct_job_count > 1 and style_parallel_same_style_flag == "true":
-            style_same_style_complexity_class = "parallel_repeated"
-        elif style_distinct_job_count > 1 or style_invocation_candidate_step_count > 1:
-            style_same_style_complexity_class = "serial_or_multi_candidate_repeated"
-        else:
-            style_same_style_complexity_class = "single_path"
-
-        row = {
-            "full_name": full_name,
-            "workflow_identifier": workflow_identifier,
-            "workflow_id": workflow_id,
-            "workflow_path": workflow_path,
-
-            "run_id": norm(str(run.get("id") or "")),
-            "run_number": norm(str(run.get("run_number") or "")),
-            "run_attempt": norm(str(run.get("run_attempt") or "")),
-            "created_at": norm(run.get("created_at")),
-            "run_started_at": norm(run.get("run_started_at")),
-            "run_updated_at": norm(run.get("updated_at")),
-            "status": norm(run.get("status")),
-            "run_conclusion": norm(run.get("conclusion")),
-            "event": norm(run.get("event")),
-            "head_branch": norm(run.get("head_branch")),
-            "head_sha": norm(run.get("head_sha")),
-            "html_url": norm(run.get("html_url")),
-
-            "target_style": style,
-            "styles_in_run_all": all_styles_in_run,
-            "multi_style_run_flag": "true" if multi_style_run_flag else "false",
-
-            "layer1_run_started_at_effective": run_start_eff,
-            "layer1_run_ended_at_effective": run_end_eff,
-            "layer1_run_duration_seconds_effective": "" if run_duration_eff is None else str(run_duration_eff),
-            "layer1_run_timing_source": run_timing_source,
-
-            "style_instru_job_count": str(style_distinct_job_count),
-            "style_instru_job_names": safe_join_names(assigned_job_names),
-
-            "style_first_instru_job_name": style_first_instru_job_name,
-            "style_first_instru_job_started_at": style_first_instru_job_started_at,
-            "style_first_instru_job_source": style_first_instru_job_source,
-            "style_last_instru_job_name": style_last_instru_job_name,
-            "style_last_instru_job_completed_at": style_last_instru_job_completed_at,
-            "style_last_instru_job_source": style_last_instru_job_source,
-
-            # V18 new auxiliary complexity fields
-            "style_distinct_job_count": str(style_distinct_job_count),
-            "style_distinct_job_base_name_count": str(style_distinct_job_base_name_count),
-            "style_matrix_like_job_count": str(style_matrix_like_job_count),
-            "style_matrix_expanded_flag": style_matrix_expanded_flag,
-            "style_parallel_same_style_flag": style_parallel_same_style_flag,
-            "style_max_parallel_jobs": str(style_max_parallel_jobs),
-            "style_repeated_same_style_flag": style_repeated_same_style_flag,
-            "style_invocation_candidate_step_count_proxy": str(style_invocation_candidate_step_count),
-            "style_distinct_invocation_step_name_count_proxy": str(len(unique_preserve(style_invocation_candidate_step_names))),
-            "style_invocation_candidate_step_names_proxy": safe_join_names(style_invocation_candidate_step_names),
-            "style_same_style_complexity_class": style_same_style_complexity_class,
-
-            # preferred Layer-1 fields
-            "style_time_to_instrumentation_envelope_seconds": "" if time_to_instrumentation_envelope is None else str(time_to_instrumentation_envelope),
-            "style_instrumentation_job_envelope_seconds": "" if instrumentation_job_envelope is None else str(instrumentation_job_envelope),
-            "style_post_instrumentation_tail_seconds": "" if post_instrumentation_tail is None else str(post_instrumentation_tail),
-            "style_layer1_model": "instrumentation_job_envelope",
-
-            # anchor reference fields
-            "style_anchor_job_name": anchor_job_name,
-            "style_anchor_job_started_at": anchor_job_started_at,
-            "style_anchor_job_completed_at": anchor_job_completed_at,
-            "style_anchor_job_source": anchor_job_source,
-
-            # broad proxy aliases
-            "style_pre_invocation_seconds_proxy": "" if time_to_instrumentation_envelope is None else str(time_to_instrumentation_envelope),
-            "style_invocation_execution_window_seconds_proxy": "" if instrumentation_job_envelope is None else str(instrumentation_job_envelope),
-            "style_post_invocation_seconds_proxy": "" if post_instrumentation_tail is None else str(post_instrumentation_tail),
-
-            # backward-friendly legacy aliases
-            "style_time_to_invocation_seconds_proxy": "" if time_to_instrumentation_envelope is None else str(time_to_instrumentation_envelope),
-            "style_invocation_tail_seconds_proxy": "" if post_instrumentation_tail is None else str(post_instrumentation_tail),
-            "style_time_to_instru_job_start_seconds": "" if time_to_instrumentation_envelope is None else str(time_to_instrumentation_envelope),
-            "style_instru_job_envelope_seconds": "" if instrumentation_job_envelope is None else str(instrumentation_job_envelope),
-            "style_post_instru_job_tail_seconds": "" if post_instrumentation_tail is None else str(post_instrumentation_tail),
-
-            "style_job_detection_methods": safe_join_names(detect_methods),
-            "style_job_segmentation_confidence": segmentation_confidence,
-            "style_overlap_with_other_styles_flag": "true" if ambiguous_job_names else "false",
-            "ambiguous_instru_job_names_in_run": ambiguous_jobs_s,
-            "all_instru_job_names_in_run": all_instru_job_names_any_s,
-
-            "extracted_at_utc": now_utc_iso(),
-        }
-        rows.append(row)
-
-    return rows
 
 
 # =========================
@@ -1225,51 +703,48 @@ def main() -> None:
 
     if OUT_RUN_INVENTORY_CSV.exists():
         OUT_RUN_INVENTORY_CSV.unlink()
-    if OUT_RUN_PER_STYLE_CSV.exists():
-        OUT_RUN_PER_STYLE_CSV.unlink()
 
     tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
     gh = GitHubClient(tokens)
 
     rows = load_verified_workflows(IN_VERIFIED_WORKFLOWS_CSV)
     if PROCESS_ONLY_LOOKS_LIKE_INSTRU:
-        rows = [r for r in rows if low(r.get("looks_like_instru")) == "yes"]
-
-    if not rows:
-        raise RuntimeError("No workflows found to process (check verified CSV or filter).")
+        rows = [r for r in rows if str(r.get("looks_like_instru", "")).strip().lower() in {"yes", "true", "1"}]
 
     after_dt = iso_to_dt(RUN_CREATED_AT_AFTER) if RUN_CREATED_AT_AFTER else None
 
-    out_run_fields = [
-        # workflow identity
+    out_fields = [
+        # workflow identity (consistent with current Stage 1)
         "full_name",
         "default_branch",
         "workflow_identifier",
         "workflow_id",
         "workflow_path",
 
-        # Stage 1 labels / pass-through
+        # workflow-level labels from Stage 1 (current schema)
         "looks_like_instru",
         "styles",
         "invocation_types",
         "third_party_provider_name",
         "test_invocation_step_names",
-        "anchor_job_ordinal",
-        "anchor_step_ordinal_in_job",
+
+        # NEW: pass-through Stage-1 noise indicator if present
+        "jobs_before_anchor_count",
+
+        # NEW: pass-through called-file instrumentation evidence from Stage 1
         "called_instru_signal",
         "called_instru_file_paths",
         "called_instru_origin_refs",
         "called_instru_origin_step_names",
         "called_instru_file_types",
 
-        # run metadata
+        # run
         "run_id",
         "run_number",
         "run_attempt",
         "head_sha",
         "created_at",
         "run_started_at",
-        "run_updated_at",
         "status",
         "run_conclusion",
         "event",
@@ -1277,154 +752,84 @@ def main() -> None:
         "html_url",
         "extracted_at_utc",
 
-        # durable run timing
-        "L1_run_started_at_effective",
-        "L1_run_ended_at_effective",
-        "L1_run_duration_seconds_effective",
-        "L1_run_timing_source",
-
-        # broad inventory fields
+        # legacy metrics (kept)
         "queue_seconds",
+        "time_to_first_instru_seconds",
+        "instru_conclusion",
         "instru_detect_method",
+        "instru_duration_seconds",
+        "run_duration_seconds",
+        "runner_labels_union",
         "instru_job_count",
+        "instru_step_count",
         "instru_job_names",
+        "instru_step_names",
+        "instru_total_seconds",
+        "instru_window_seconds",
         "instru_first_started_at",
         "instru_last_completed_at",
-        "instru_window_seconds",
+        "instru_share_of_run",
 
-        # new V18 run-level auxiliary complexity fields
-        "instru_distinct_job_count",
-        "instru_distinct_job_base_name_count",
-        "instru_matrix_like_job_count",
-        "instru_matrix_expanded_flag",
-        "instru_parallel_jobs_flag",
-        "instru_max_parallel_jobs",
-
-        # preferred Layer-1 fields
-        "time_to_instrumentation_envelope_seconds",
-        "instrumentation_job_envelope_seconds",
-        "post_instrumentation_tail_seconds",
-        "layer1_model",
-        "layer1_proxy_quality",
-
-        # anchor reference fields
+        # NEW: anchor-job timing (modified TTFTS readiness)
         "anchor_job_name",
         "anchor_job_started_at",
-        "anchor_job_completed_at",
-        "anchor_job_source",
-
-        # broad proxy aliases
-        "pre_invocation_seconds_proxy",
-        "invocation_execution_window_seconds_proxy",
-        "post_invocation_seconds_proxy",
-
-        # backward-friendly legacy aliases
-        "time_to_invocation_seconds_proxy",
-        "invocation_tail_seconds_proxy",
-        "time_to_first_instru_seconds",
         "anchor_job_start_source",
         "time_to_first_instru_from_anchor_job_seconds",
         "time_to_first_instru_from_anchor_job_quality",
+
+        # S2 run timing fallback
+        "S2_run_started_at_jobs_min",
+        "S2_run_ended_at_jobs_max",
+        "S2_run_duration_seconds_jobs_window",
+        "S2_run_timing_source",
+
+        # S2 mirrored fallback metrics
+        "S2_queue_seconds",
+        "S2_time_to_first_instru_seconds",
+        "S2_instru_conclusion",
+        "S2_instru_detect_method",
+        "S2_instru_duration_seconds",
+        "S2_run_duration_seconds",
+        "S2_runner_labels_union",
+        "S2_instru_job_count",
+        "S2_instru_step_count",
+        "S2_instru_job_names",
+        "S2_instru_step_names",
+        "S2_instru_total_seconds",
+        "S2_instru_window_seconds",
+        "S2_instru_first_started_at",
+        "S2_instru_last_completed_at",
+        "S2_instru_share_of_run",
+
+        # NEW S2 mirrors for modified TTFTS
+        "S2_anchor_job_name",
+        "S2_anchor_job_started_at",
+        "S2_anchor_job_start_source",
+        "S2_time_to_first_instru_from_anchor_job_seconds",
+        "S2_time_to_first_instru_from_anchor_job_quality",
     ]
 
-    out_style_fields = [
-        "full_name",
-        "workflow_identifier",
-        "workflow_id",
-        "workflow_path",
+    ensure_csv_header(OUT_RUN_INVENTORY_CSV, out_fields)
 
-        "run_id",
-        "run_number",
-        "run_attempt",
-        "created_at",
-        "run_started_at",
-        "run_updated_at",
-        "status",
-        "run_conclusion",
-        "event",
-        "head_branch",
-        "head_sha",
-        "html_url",
+    if not rows:
+        print("Stage 2: no workflows to process after Stage-1 filter; wrote header-only run_inventory.csv")
+        return
 
-        "target_style",
-        "styles_in_run_all",
-        "multi_style_run_flag",
 
-        "layer1_run_started_at_effective",
-        "layer1_run_ended_at_effective",
-        "layer1_run_duration_seconds_effective",
-        "layer1_run_timing_source",
-
-        "style_instru_job_count",
-        "style_instru_job_names",
-        "style_first_instru_job_name",
-        "style_first_instru_job_started_at",
-        "style_first_instru_job_source",
-        "style_last_instru_job_name",
-        "style_last_instru_job_completed_at",
-        "style_last_instru_job_source",
-
-        # new V18 auxiliary complexity fields
-        "style_distinct_job_count",
-        "style_distinct_job_base_name_count",
-        "style_matrix_like_job_count",
-        "style_matrix_expanded_flag",
-        "style_parallel_same_style_flag",
-        "style_max_parallel_jobs",
-        "style_repeated_same_style_flag",
-        "style_invocation_candidate_step_count_proxy",
-        "style_distinct_invocation_step_name_count_proxy",
-        "style_invocation_candidate_step_names_proxy",
-        "style_same_style_complexity_class",
-
-        # preferred Layer-1 fields
-        "style_time_to_instrumentation_envelope_seconds",
-        "style_instrumentation_job_envelope_seconds",
-        "style_post_instrumentation_tail_seconds",
-        "style_layer1_model",
-
-        # anchor reference fields
-        "style_anchor_job_name",
-        "style_anchor_job_started_at",
-        "style_anchor_job_completed_at",
-        "style_anchor_job_source",
-
-        # broad proxy aliases
-        "style_pre_invocation_seconds_proxy",
-        "style_invocation_execution_window_seconds_proxy",
-        "style_post_invocation_seconds_proxy",
-
-        # backward-friendly legacy aliases
-        "style_time_to_invocation_seconds_proxy",
-        "style_invocation_tail_seconds_proxy",
-        "style_time_to_instru_job_start_seconds",
-        "style_instru_job_envelope_seconds",
-        "style_post_instru_job_tail_seconds",
-
-        "style_job_detection_methods",
-        "style_job_segmentation_confidence",
-        "style_overlap_with_other_styles_flag",
-        "ambiguous_instru_job_names_in_run",
-        "all_instru_job_names_in_run",
-
-        "extracted_at_utc",
-    ]
-
-    ensure_csv_header(OUT_RUN_INVENTORY_CSV, out_run_fields)
-    ensure_csv_header(OUT_RUN_PER_STYLE_CSV, out_style_fields)
-
+    ensure_csv_header(OUT_RUN_INVENTORY_CSV, out_fields)
     existing_run_ids = load_existing_keys(OUT_RUN_INVENTORY_CSV, "run_id")
+
     default_branch_cache: Dict[str, str] = {}
 
     wf_iter = rows
     if tqdm is not None:
-        wf_iter = tqdm(rows, desc="Stage2 V18: workflows -> runs")
+        wf_iter = tqdm(rows, desc="Stage2: workflows -> runs")
 
     for wf in wf_iter:
-        full_name = norm(wf.get("full_name"))
-        workflow_identifier = norm(wf.get("workflow_identifier"))
-        workflow_id = norm(wf.get("workflow_id"))
-        workflow_path = norm(wf.get("workflow_path"))
+        full_name = (wf.get("full_name") or "").strip()
+        workflow_identifier = (wf.get("workflow_identifier") or "").strip()
+        workflow_id = (wf.get("workflow_id") or "").strip()
+        workflow_path = (wf.get("workflow_path") or "").strip()
 
         if not full_name:
             continue
@@ -1448,151 +853,186 @@ def main() -> None:
         if MAX_RUNS_PER_WORKFLOW is not None:
             runs = runs[:MAX_RUNS_PER_WORKFLOW]
 
-        declared_styles = split_styles(wf.get("styles") or wf.get("inferred_styles") or "")
-        if not declared_styles:
-            one_style = normalize_style_label(wf.get("inferred_style"))
-            declared_styles = [one_style] if one_style in STYLE_CANONICAL else []
-
         anchor_step_names = parse_anchor_step_names(wf.get("test_invocation_step_names") or "")
 
         for run in runs:
-            run_id = norm(str(run.get("id") or ""))
-            if not run_id:
-                continue
-            if run_id in existing_run_ids:
+            run_id = str(run.get("id") or "").strip()
+            if not run_id or run_id in existing_run_ids:
                 continue
 
-            created_at = norm(run.get("created_at"))
+            created_at = run.get("created_at") or ""
             if after_dt:
                 cdt = iso_to_dt(created_at)
                 if cdt and cdt < after_dt:
                     continue
 
-            head_branch = norm(run.get("head_branch"))
+            head_branch = run.get("head_branch") or ""
             if DEFAULT_BRANCH_ONLY and head_branch and head_branch != default_branch:
                 continue
 
+            run_started_at = run.get("run_started_at") or ""
+            head_sha = run.get("head_sha") or ""
+
             jobs = list_run_jobs(gh, full_name, int(run_id)) if FETCH_JOBS_FOR_EACH_RUN else []
 
-            run_started_at = norm(run.get("run_started_at"))
-            run_updated_at = norm(run.get("updated_at"))
-
-            run_start_eff, run_end_eff, run_dur_eff, run_timing_source = compute_run_window_from_jobs(
-                jobs=jobs,
-                run_started_at=run_started_at,
-                run_updated_at=run_updated_at,
-            )
-
-            run_metrics = build_run_level_metrics(
+            metrics = infer_instru_metrics_from_jobs(
                 jobs=jobs,
                 run_created_at=created_at,
                 run_started_at=run_started_at,
-                run_updated_at=run_updated_at,
                 anchor_step_names=anchor_step_names,
-                declared_styles=declared_styles,
             )
 
-            append_row(OUT_RUN_INVENTORY_CSV, out_run_fields, {
+            # Jobs-window run timing (S2_)
+            s2_run_start, s2_run_end, s2_run_dur = compute_run_window_from_jobs(jobs)
+            s2_run_src = "jobs_window" if s2_run_start and s2_run_end else "missing"
+
+            # Broad workflow-label fallback only when no runtime signal exists
+            if (
+                int(metrics.get("instru_job_count") or 0) == 0
+                and int(metrics.get("instru_step_count") or 0) == 0
+                and (wf.get("looks_like_instru") or "").strip().lower() == "yes"
+            ):
+                metrics["instru_detect_method"] = "workflow_label"
+                metrics["instru_conclusion"] = (run.get("conclusion") or "unknown")
+                if run_started_at:
+                    metrics["instru_first_started_at"] = run_started_at
+                    metrics["time_to_first_instru_seconds"] = 0
+
+                # Modified TTFTS fallback consistency (explicitly flagged)
+                metrics["anchor_job_start_source"] = "run_started_fallback"
+                metrics["time_to_first_instru_from_anchor_job_seconds"] = 0
+                metrics["time_to_first_instru_from_anchor_job_quality"] = "workflow_label_proxy"
+                metrics["anchor_job_started_at"] = run_started_at
+
+            # Build S2_ mirror for Stage 3 fallback
+            s2 = {
+                "S2_queue_seconds": metrics["queue_seconds"],
+                "S2_time_to_first_instru_seconds": metrics["time_to_first_instru_seconds"],
+                "S2_instru_conclusion": metrics["instru_conclusion"],
+                "S2_instru_detect_method": metrics["instru_detect_method"],
+                "S2_instru_duration_seconds": metrics["instru_duration_seconds"],
+                "S2_run_duration_seconds": metrics["run_duration_seconds"],
+                "S2_runner_labels_union": metrics["runner_labels_union"],
+                "S2_instru_job_count": metrics["instru_job_count"],
+                "S2_instru_step_count": metrics["instru_step_count"],
+                "S2_instru_job_names": metrics["instru_job_names"],
+                "S2_instru_step_names": metrics["instru_step_names"],
+                "S2_instru_total_seconds": metrics["instru_total_seconds"],
+                "S2_instru_window_seconds": metrics["instru_window_seconds"],
+                "S2_instru_first_started_at": metrics["instru_first_started_at"],
+                "S2_instru_last_completed_at": metrics["instru_last_completed_at"],
+                "S2_instru_share_of_run": metrics["instru_share_of_run"],
+
+                # NEW S2 mirrors
+                "S2_anchor_job_name": metrics["anchor_job_name"],
+                "S2_anchor_job_started_at": metrics["anchor_job_started_at"],
+                "S2_anchor_job_start_source": metrics["anchor_job_start_source"],
+                "S2_time_to_first_instru_from_anchor_job_seconds": metrics["time_to_first_instru_from_anchor_job_seconds"],
+                "S2_time_to_first_instru_from_anchor_job_quality": metrics["time_to_first_instru_from_anchor_job_quality"],
+            }
+
+            append_row(OUT_RUN_INVENTORY_CSV, out_fields, {
+                # workflow identity
                 "full_name": full_name,
                 "default_branch": default_branch,
                 "workflow_identifier": workflow_identifier,
                 "workflow_id": workflow_id,
                 "workflow_path": workflow_path,
 
-                "looks_like_instru": norm(wf.get("looks_like_instru")),
-                "styles": norm(wf.get("styles")),
-                "invocation_types": norm(wf.get("invocation_types")),
-                "third_party_provider_name": norm(wf.get("third_party_provider_name")),
-                "test_invocation_step_names": norm(wf.get("test_invocation_step_names")),
-                "anchor_job_ordinal": norm(wf.get("anchor_job_ordinal")),
-                "anchor_step_ordinal_in_job": norm(wf.get("anchor_step_ordinal_in_job")),
-                "called_instru_signal": norm(wf.get("called_instru_signal")),
-                "called_instru_file_paths": norm(wf.get("called_instru_file_paths")),
-                "called_instru_origin_refs": norm(wf.get("called_instru_origin_refs")),
-                "called_instru_origin_step_names": norm(wf.get("called_instru_origin_step_names")),
-                "called_instru_file_types": norm(wf.get("called_instru_file_types")),
+                # workflow labels from Stage 1
+                "looks_like_instru": (wf.get("looks_like_instru") or ""),
+                "styles": (wf.get("styles") or ""),
+                "invocation_types": (wf.get("invocation_types") or ""),
+                "third_party_provider_name": (wf.get("third_party_provider_name") or ""),
+                "test_invocation_step_names": (wf.get("test_invocation_step_names") or ""),
 
+                # NEW pass-through field from Stage 1 (if absent, stays blank)
+                "jobs_before_anchor_count": (wf.get("jobs_before_anchor_count") or ""),
+
+                # NEW pass-through called-file instrumentation evidence from Stage 1
+                "called_instru_signal": (wf.get("called_instru_signal") or ""),
+                "called_instru_file_paths": (wf.get("called_instru_file_paths") or ""),
+                "called_instru_origin_refs": (wf.get("called_instru_origin_refs") or ""),
+                "called_instru_origin_step_names": (wf.get("called_instru_origin_step_names") or ""),
+                "called_instru_file_types": (wf.get("called_instru_file_types") or ""),
+
+                # run metadata
                 "run_id": run_id,
-                "run_number": norm(str(run.get("run_number") or "")),
-                "run_attempt": norm(str(run.get("run_attempt") or "")),
-                "head_sha": norm(run.get("head_sha")),
+                "run_number": run.get("run_number") or "",
+                "run_attempt": run.get("run_attempt") or "",
+                "head_sha": head_sha,
                 "created_at": created_at,
                 "run_started_at": run_started_at,
-                "run_updated_at": run_updated_at,
-                "status": norm(run.get("status")),
-                "run_conclusion": norm(run.get("conclusion")),
-                "event": norm(run.get("event")),
+                "status": run.get("status") or "",
+                "run_conclusion": run.get("conclusion") or "",
+                "event": run.get("event") or "",
                 "head_branch": head_branch,
-                "html_url": norm(run.get("html_url")),
+                "html_url": run.get("html_url") or "",
                 "extracted_at_utc": now_utc_iso(),
 
-                "L1_run_started_at_effective": run_start_eff,
-                "L1_run_ended_at_effective": run_end_eff,
-                "L1_run_duration_seconds_effective": "" if run_dur_eff is None else str(run_dur_eff),
-                "L1_run_timing_source": run_timing_source,
+                # legacy metrics
+                "queue_seconds": "" if metrics["queue_seconds"] is None else str(metrics["queue_seconds"]),
+                "time_to_first_instru_seconds": "" if metrics["time_to_first_instru_seconds"] is None else str(metrics["time_to_first_instru_seconds"]),
+                "instru_conclusion": metrics["instru_conclusion"],
+                "instru_detect_method": metrics["instru_detect_method"],
+                "instru_duration_seconds": "" if metrics["instru_duration_seconds"] is None else str(metrics["instru_duration_seconds"]),
+                "run_duration_seconds": "" if metrics["run_duration_seconds"] is None else str(metrics["run_duration_seconds"]),
+                "runner_labels_union": metrics["runner_labels_union"],
+                "instru_job_count": str(metrics["instru_job_count"]),
+                "instru_step_count": str(metrics["instru_step_count"]),
+                "instru_job_names": metrics["instru_job_names"],
+                "instru_step_names": metrics["instru_step_names"],
+                "instru_total_seconds": "" if metrics["instru_total_seconds"] is None else str(metrics["instru_total_seconds"]),
+                "instru_window_seconds": "" if metrics["instru_window_seconds"] is None else str(metrics["instru_window_seconds"]),
+                "instru_first_started_at": metrics["instru_first_started_at"],
+                "instru_last_completed_at": metrics["instru_last_completed_at"],
+                "instru_share_of_run": "" if metrics["instru_share_of_run"] is None else str(metrics["instru_share_of_run"]),
 
-                "queue_seconds": "" if run_metrics["queue_seconds"] is None else str(run_metrics["queue_seconds"]),
-                "instru_detect_method": run_metrics["instru_detect_method"],
-                "instru_job_count": "" if run_metrics["instru_job_count"] is None else str(run_metrics["instru_job_count"]),
-                "instru_job_names": run_metrics["instru_job_names"],
-                "instru_first_started_at": run_metrics["instru_first_started_at"],
-                "instru_last_completed_at": run_metrics["instru_last_completed_at"],
-                "instru_window_seconds": "" if run_metrics["instru_window_seconds"] is None else str(run_metrics["instru_window_seconds"]),
+                # NEW anchor-job timing metrics
+                "anchor_job_name": metrics["anchor_job_name"],
+                "anchor_job_started_at": metrics["anchor_job_started_at"],
+                "anchor_job_start_source": metrics["anchor_job_start_source"],
+                "time_to_first_instru_from_anchor_job_seconds": "" if metrics["time_to_first_instru_from_anchor_job_seconds"] is None else str(metrics["time_to_first_instru_from_anchor_job_seconds"]),
+                "time_to_first_instru_from_anchor_job_quality": metrics["time_to_first_instru_from_anchor_job_quality"],
 
-                "instru_distinct_job_count": "" if run_metrics["instru_distinct_job_count"] is None else str(run_metrics["instru_distinct_job_count"]),
-                "instru_distinct_job_base_name_count": "" if run_metrics["instru_distinct_job_base_name_count"] is None else str(run_metrics["instru_distinct_job_base_name_count"]),
-                "instru_matrix_like_job_count": "" if run_metrics["instru_matrix_like_job_count"] is None else str(run_metrics["instru_matrix_like_job_count"]),
-                "instru_matrix_expanded_flag": run_metrics["instru_matrix_expanded_flag"],
-                "instru_parallel_jobs_flag": run_metrics["instru_parallel_jobs_flag"],
-                "instru_max_parallel_jobs": "" if run_metrics["instru_max_parallel_jobs"] is None else str(run_metrics["instru_max_parallel_jobs"]),
+                # S2 timing fallback
+                "S2_run_started_at_jobs_min": s2_run_start,
+                "S2_run_ended_at_jobs_max": s2_run_end,
+                "S2_run_duration_seconds_jobs_window": "" if s2_run_dur is None else str(s2_run_dur),
+                "S2_run_timing_source": s2_run_src,
 
-                "time_to_instrumentation_envelope_seconds": "" if run_metrics["time_to_instrumentation_envelope_seconds"] is None else str(run_metrics["time_to_instrumentation_envelope_seconds"]),
-                "instrumentation_job_envelope_seconds": "" if run_metrics["instrumentation_job_envelope_seconds"] is None else str(run_metrics["instrumentation_job_envelope_seconds"]),
-                "post_instrumentation_tail_seconds": "" if run_metrics["post_instrumentation_tail_seconds"] is None else str(run_metrics["post_instrumentation_tail_seconds"]),
-                "layer1_model": run_metrics["layer1_model"],
-                "layer1_proxy_quality": run_metrics["layer1_proxy_quality"],
+                # S2 mirrored metrics
+                "S2_queue_seconds": "" if s2["S2_queue_seconds"] is None else str(s2["S2_queue_seconds"]),
+                "S2_time_to_first_instru_seconds": "" if s2["S2_time_to_first_instru_seconds"] is None else str(s2["S2_time_to_first_instru_seconds"]),
+                "S2_instru_conclusion": s2["S2_instru_conclusion"],
+                "S2_instru_detect_method": s2["S2_instru_detect_method"],
+                "S2_instru_duration_seconds": "" if s2["S2_instru_duration_seconds"] is None else str(s2["S2_instru_duration_seconds"]),
+                "S2_run_duration_seconds": "" if s2["S2_run_duration_seconds"] is None else str(s2["S2_run_duration_seconds"]),
+                "S2_runner_labels_union": s2["S2_runner_labels_union"],
+                "S2_instru_job_count": "" if s2["S2_instru_job_count"] is None else str(s2["S2_instru_job_count"]),
+                "S2_instru_step_count": "" if s2["S2_instru_step_count"] is None else str(s2["S2_instru_step_count"]),
+                "S2_instru_job_names": s2["S2_instru_job_names"],
+                "S2_instru_step_names": s2["S2_instru_step_names"],
+                "S2_instru_total_seconds": "" if s2["S2_instru_total_seconds"] is None else str(s2["S2_instru_total_seconds"]),
+                "S2_instru_window_seconds": "" if s2["S2_instru_window_seconds"] is None else str(s2["S2_instru_window_seconds"]),
+                "S2_instru_first_started_at": s2["S2_instru_first_started_at"],
+                "S2_instru_last_completed_at": s2["S2_instru_last_completed_at"],
+                "S2_instru_share_of_run": "" if s2["S2_instru_share_of_run"] is None else str(s2["S2_instru_share_of_run"]),
 
-                "anchor_job_name": run_metrics["anchor_job_name"],
-                "anchor_job_started_at": run_metrics["anchor_job_started_at"],
-                "anchor_job_completed_at": run_metrics["anchor_job_completed_at"],
-                "anchor_job_source": run_metrics["anchor_job_source"],
-
-                "pre_invocation_seconds_proxy": "" if run_metrics["pre_invocation_seconds_proxy"] is None else str(run_metrics["pre_invocation_seconds_proxy"]),
-                "invocation_execution_window_seconds_proxy": "" if run_metrics["invocation_execution_window_seconds_proxy"] is None else str(run_metrics["invocation_execution_window_seconds_proxy"]),
-                "post_invocation_seconds_proxy": "" if run_metrics["post_invocation_seconds_proxy"] is None else str(run_metrics["post_invocation_seconds_proxy"]),
-
-                "time_to_invocation_seconds_proxy": "" if run_metrics["time_to_invocation_seconds_proxy"] is None else str(run_metrics["time_to_invocation_seconds_proxy"]),
-                "invocation_tail_seconds_proxy": "" if run_metrics["invocation_tail_seconds_proxy"] is None else str(run_metrics["invocation_tail_seconds_proxy"]),
-                "time_to_first_instru_seconds": "" if run_metrics["time_to_first_instru_seconds"] is None else str(run_metrics["time_to_first_instru_seconds"]),
-                "anchor_job_start_source": run_metrics["anchor_job_start_source"],
-                "time_to_first_instru_from_anchor_job_seconds": "" if run_metrics["time_to_first_instru_from_anchor_job_seconds"] is None else str(run_metrics["time_to_first_instru_from_anchor_job_seconds"]),
-                "time_to_first_instru_from_anchor_job_quality": run_metrics["time_to_first_instru_from_anchor_job_quality"],
+                # NEW S2 mirrors for modified TTFTS
+                "S2_anchor_job_name": s2["S2_anchor_job_name"],
+                "S2_anchor_job_started_at": s2["S2_anchor_job_started_at"],
+                "S2_anchor_job_start_source": s2["S2_anchor_job_start_source"],
+                "S2_time_to_first_instru_from_anchor_job_seconds": "" if s2["S2_time_to_first_instru_from_anchor_job_seconds"] is None else str(s2["S2_time_to_first_instru_from_anchor_job_seconds"]),
+                "S2_time_to_first_instru_from_anchor_job_quality": s2["S2_time_to_first_instru_from_anchor_job_quality"],
             })
-
-            style_rows = build_run_per_style_rows(
-                full_name=full_name,
-                workflow_identifier=workflow_identifier,
-                workflow_id=workflow_id,
-                workflow_path=workflow_path,
-                run=run,
-                declared_styles=declared_styles,
-                anchor_step_names=anchor_step_names,
-                jobs=jobs,
-                run_start_eff=run_start_eff,
-                run_end_eff=run_end_eff,
-                run_duration_eff=run_dur_eff,
-                run_timing_source=run_timing_source,
-            )
-            for sr in style_rows:
-                append_row(OUT_RUN_PER_STYLE_CSV, out_style_fields, sr)
 
             existing_run_ids.add(run_id)
 
         time.sleep(SLEEP_BETWEEN_WORKFLOWS_SEC)
 
     print("Done.")
-    print("Wrote run-level inventory:", OUT_RUN_INVENTORY_CSV)
-    print("Wrote run×style Layer-1 envelope inventory:", OUT_RUN_PER_STYLE_CSV)
+    print("Wrote:", OUT_RUN_INVENTORY_CSV)
 
 
 if __name__ == "__main__":
