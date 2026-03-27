@@ -9,6 +9,10 @@ env:
 permissions:
   contents: write
 
+concurrency:
+  group: data-processed-writer
+  cancel-in-progress: false
+
 jobs:
   stage3:
     runs-on: ubuntu-latest
@@ -17,6 +21,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -50,39 +56,89 @@ jobs:
         run: |
           python -m pipeline.stage3_run_telemetry
 
+      - name: Gzip step-level output
+        run: |
+          test -f data/processed/run_steps_v16_stage3_breakdown.csv
+          python - <<'PY'
+          import gzip
+          import shutil
+          from pathlib import Path
+
+          src = Path("data/processed/run_steps_v16_stage3_breakdown.csv")
+          dst = Path("data/processed/run_steps_v16_stage3_breakdown.csv.gz")
+
+          with src.open("rb") as f_in, gzip.open(dst, "wb", compresslevel=6) as f_out:
+              shutil.copyfileobj(f_in, f_out)
+
+          src.unlink()
+
+          print(f"Created: {dst}")
+          print(f"Gzip size bytes: {dst.stat().st_size}")
+          PY
+
       - name: Inspect Stage 3 outputs
         if: always()
         run: |
           echo "run_metrics lines:"
           wc -l data/processed/run_metrics_v16_stage3_enhanced.csv || true
-          echo "run_steps lines:"
-          wc -l data/processed/run_steps_v16_stage3_breakdown.csv || true
+          echo "run_steps gzip size (bytes):"
+          stat -c %s data/processed/run_steps_v16_stage3_breakdown.csv.gz || true
           echo "run_per_style lines:"
           wc -l data/processed/run_per_style_v1_stage3.csv || true
           echo "run_metrics preview:"
           sed -n '1,10p' data/processed/run_metrics_v16_stage3_enhanced.csv || true
-          echo "run_steps preview:"
-          sed -n '1,10p' data/processed/run_steps_v16_stage3_breakdown.csv || true
+          echo "run_steps gzip preview:"
+          python - <<'PY'
+          import gzip
+          from itertools import islice
+          from pathlib import Path
+
+          path = Path("data/processed/run_steps_v16_stage3_breakdown.csv.gz")
+          if path.exists():
+              with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
+                  for line in islice(f, 10):
+                      print(line.rstrip())
+          else:
+              print("gzip file missing")
+          PY
           echo "run_per_style preview:"
           sed -n '1,10p' data/processed/run_per_style_v1_stage3.csv || true
 
       - name: Validate Stage 3 outputs exist
         run: |
           test -f data/processed/run_metrics_v16_stage3_enhanced.csv
-          test -f data/processed/run_steps_v16_stage3_breakdown.csv
+          test -f data/processed/run_steps_v16_stage3_breakdown.csv.gz
           test -f data/processed/run_per_style_v1_stage3.csv
 
-      - name: Commit Stage 3 outputs
+      - name: Commit Stage 3 summary outputs only
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add data/processed/run_metrics_v16_stage3_enhanced.csv \
-                  data/processed/run_steps_v16_stage3_breakdown.csv \
                   data/processed/run_per_style_v1_stage3.csv
-          git diff --cached --quiet || git commit -m "Stage 3: telemetry + steps + per-style CSVs"
-          git push
+
+          if git diff --cached --quiet; then
+            echo "No summary-output changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Stage 3: telemetry summary outputs"
+
+          pushed=0
+          for i in 1 2 3; do
+            echo "Push attempt ${i}"
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              pushed=1
+              break
+            fi
+            echo "Push attempt ${i} failed; retrying after 10s..."
+            sleep 10
+          done
+
+          test "${pushed}" = "1"
 
       - name: Upload Stage 3 artifact
         uses: actions/upload-artifact@v7
@@ -90,5 +146,6 @@ jobs:
           name: stage3
           path: |
             data/processed/run_metrics_v16_stage3_enhanced.csv
-            data/processed/run_steps_v16_stage3_breakdown.csv
+            data/processed/run_steps_v16_stage3_breakdown.csv.gz
             data/processed/run_per_style_v1_stage3.csv
+          if-no-files-found: error
