@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       shard_matrix: ${{ steps.build.outputs.shard_matrix }}
+      shard_count: ${{ steps.build.outputs.shard_count }}
 
     steps:
       - name: Check out repository
@@ -91,11 +92,15 @@ jobs:
               ]
           }
 
+          shard_count = len(matrix["include"])
+
           print("Stage 2 shard matrix:")
           print(json.dumps(matrix, indent=2))
+          print(f"Stage 2 shard count: {shard_count}")
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"shard_matrix={json.dumps(matrix)}\n")
+              fh.write(f"shard_count={shard_count}\n")
           PY
 
   run-stage2-shards:
@@ -113,7 +118,10 @@ jobs:
     secrets: inherit
 
   aggregate-stage2:
-    needs: run-stage2-shards
+    needs:
+      - prepare-stage2-shards
+      - run-stage2-shards
+    if: ${{ needs.run-stage2-shards.result == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -141,6 +149,51 @@ jobs:
         run: |
           echo "Downloaded files:"
           find data/processed/stage2_shards_downloaded -type f | sort || true
+
+      - name: Validate all Stage 2 shard artifacts downloaded
+        env:
+          EXPECTED_SHARDS: ${{ needs.prepare-stage2-shards.outputs.shard_count }}
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          expected = int(os.environ["EXPECTED_SHARDS"])
+          root = Path("data/processed/stage2_shards_downloaded")
+          if not root.exists():
+              print("Shard download directory is missing.", file=sys.stderr)
+              sys.exit(1)
+
+          shard_dirs = sorted([p for p in root.iterdir() if p.is_dir() and p.name.startswith("stage2-shard-")])
+          actual = len(shard_dirs)
+          print(f"Expected shard artifacts: {expected}")
+          print(f"Downloaded shard artifacts: {actual}")
+
+          if expected <= 0:
+              print("Expected shard count must be positive.", file=sys.stderr)
+              sys.exit(1)
+          if actual != expected:
+              print("Mismatch between expected and downloaded Stage 2 shard artifacts.", file=sys.stderr)
+              sys.exit(1)
+
+          missing = []
+          for d in shard_dirs:
+              inv = d / "run_inventory.csv"
+              per_style = d / "run_inventory_per_style.csv"
+              if not inv.is_file():
+                  missing.append(str(inv))
+              if not per_style.is_file():
+                  missing.append(str(per_style))
+
+          if missing:
+              print("Missing expected shard output files:", file=sys.stderr)
+              for path in missing:
+                  print(path, file=sys.stderr)
+              sys.exit(1)
+
+          print("All expected Stage 2 shard artifacts and files are present.")
+          PY
 
       - name: Aggregate Stage 2 run_inventory.csv
         run: |

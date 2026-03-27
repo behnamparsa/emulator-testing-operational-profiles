@@ -1,6 +1,5 @@
 name: Stage 2 - Shard Worker
 
-
 on:
   workflow_call:
     inputs:
@@ -49,6 +48,7 @@ jobs:
 
       - name: Prepare Stage 2 shard root
         run: |
+          test -f "stage2-shard-definitions/${{ inputs.shard_id }}/${{ inputs.shard_file }}"
           rm -rf "${{ inputs.shard_root }}/${{ inputs.shard_id }}"
           mkdir -p "${{ inputs.shard_root }}/${{ inputs.shard_id }}"
           cp "stage2-shard-definitions/${{ inputs.shard_id }}/${{ inputs.shard_file }}" \

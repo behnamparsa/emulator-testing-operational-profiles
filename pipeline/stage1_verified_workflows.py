@@ -34,7 +34,6 @@
 # ============================================================
 
 import base64
-import os
 import csv
 import random
 import re
@@ -62,7 +61,7 @@ ROOT_DIR = get_root_dir()
 IN_URL_LIST_CSV = ROOT_DIR / "URL_List.csv"               # input list of repos
 OUT_STAGE1_CSV  = ROOT_DIR / "verified_workflows_v16.csv" # Stage-1 output name (original)
 
-MAX_TOKENS_TO_USE = 10
+MAX_TOKENS_TO_USE = 5
 
 CONNECT_TIMEOUT_S = 10
 READ_TIMEOUT_S = 60
@@ -136,20 +135,6 @@ def safe_join_pipe(items: List[str], max_len: int = 3000) -> str:
         return s
     return s[: max_len - 3] + "..."
 
-
-def external_repo_tokens() -> List[Optional[str]]:
-    """Preferred cross-repo auth pool for workflow discovery.
-    Uses GH_PAT_1..GH_PAT_5 first, then GH_PAT, and finally unauthenticated fallback for public repos.
-    Avoids using the current repo's GITHUB_TOKEN for external workflow discovery.
-    """
-    toks: List[Optional[str]] = []
-    for key in ["GH_PAT_1", "GH_PAT_2", "GH_PAT_3", "GH_PAT_4", "GH_PAT_5", "GH_PAT"]:
-        val = (os.environ.get(key) or "").strip()
-        if val and val not in toks:
-            toks.append(val)
-    toks.append(None)
-    return toks
-
 def parse_repo_full_name(url: str) -> str:
     u = (url or "").strip()
     if not u:
@@ -170,23 +155,25 @@ def parse_repo_full_name(url: str) -> str:
             return ""
     return ""
 
-def load_tokens_from_env_file(env_path: Path, max_tokens: int = 3) -> List[str]:
+def load_tokens_from_env_file(env_path: Path, max_tokens: int = MAX_TOKENS_TO_USE) -> List[str]:
     if not env_path.exists():
         raise FileNotFoundError(f"Tokens env file not found: {env_path}")
     tokens: List[str] = []
+    accepted_prefixes = ("GH_PAT", "GITHUB_TOKEN")
     for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, v = line.split("=", 1)
-        k = k.strip()
-        v = v.strip().strip('"').strip("'")
-        if k.startswith("GITHUB_TOKEN_") and v:
-            tokens.append(v)
-            if len(tokens) >= max_tokens:
-                break
+        key = k.strip()
+        val = v.strip().strip('"').strip("'")
+        if any(key == prefix or key.startswith(prefix + "_") for prefix in accepted_prefixes):
+            if val and val not in tokens:
+                tokens.append(val)
+                if len(tokens) >= max_tokens:
+                    break
     if not tokens:
-        raise ValueError(f"No tokens found in {env_path}. Expected keys like GITHUB_TOKEN_1=...")
+        raise ValueError(f"No GitHub tokens found in {env_path}. Expected keys like GH_PAT_1=... or GITHUB_TOKEN_1=...")
     return tokens
 
 def sanitize_gha_expr(text: str) -> str:
@@ -206,38 +193,24 @@ def normalize_repo_rel_path(ref: str) -> str:
 # =========================
 @dataclass
 class TokenState:
-    token: Optional[str]
+    token: str
     remaining: Optional[int] = None
     reset_epoch: Optional[int] = None
 
 class GitHubClient:
-    def __init__(self, tokens: List[Optional[str]]) -> None:
+    def __init__(self, tokens: List[str]) -> None:
         self.session = requests.Session()
         self.session.headers.update({
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
             "User-Agent": "stage1-v16-workflow-scan/1.0",
         })
-        cleaned: List[Optional[str]] = []
-        seen = set()
-        for t in tokens:
-            key = (t or "").strip()
-            dedupe_key = key if key else "__NONE__"
-            if dedupe_key in seen:
-                continue
-            seen.add(dedupe_key)
-            cleaned.append(key or None)
-        if not cleaned:
-            cleaned = [None]
-        self.tokens = [TokenState(t) for t in cleaned]
+        self.tokens = [TokenState(t) for t in tokens]
 
     def _pick_idx(self) -> int:
         now = int(time.time())
         candidates = []
         for i, st in enumerate(self.tokens):
-            if st.token is None:
-                candidates.append((0, i))
-                continue
             if st.remaining is None or st.remaining > 0:
                 candidates.append((0, i))
             else:
@@ -250,7 +223,7 @@ class GitHubClient:
 
     def _sleep_until_reset(self) -> None:
         now = int(time.time())
-        resets = [st.reset_epoch for st in self.tokens if st.token and st.reset_epoch]
+        resets = [st.reset_epoch for st in self.tokens if st.reset_epoch]
         if not resets:
             time.sleep(5)
             return
@@ -268,32 +241,27 @@ class GitHubClient:
         for attempt in range(1, MAX_RETRIES_PER_REQUEST + 1):
             idx = self._pick_idx()
             st = self.tokens[idx]
-            headers = dict(self.session.headers)
-            if st.token:
-                headers["Authorization"] = f"Bearer {st.token}"
-            else:
-                headers.pop("Authorization", None)
+            self.session.headers["Authorization"] = f"Bearer {st.token}"
             try:
-                resp = self.session.request(method, url, params=params, headers=headers, timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S))
+                resp = self.session.request(method, url, params=params, timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S))
             except requests.exceptions.RequestException:
                 self._backoff(attempt)
                 continue
 
             last_status = resp.status_code
 
-            if st.token:
-                rem = resp.headers.get("X-RateLimit-Remaining")
-                if rem is not None:
-                    try:
-                        st.remaining = int(rem)
-                    except Exception:
-                        pass
-                rst = resp.headers.get("X-RateLimit-Reset")
-                if rst is not None:
-                    try:
-                        st.reset_epoch = int(rst)
-                    except Exception:
-                        pass
+            rem = resp.headers.get("X-RateLimit-Remaining")
+            if rem is not None:
+                try:
+                    st.remaining = int(rem)
+                except Exception:
+                    pass
+            rst = resp.headers.get("X-RateLimit-Reset")
+            if rst is not None:
+                try:
+                    st.reset_epoch = int(rst)
+                except Exception:
+                    pass
 
             if resp.status_code == 404:
                 return None
@@ -314,18 +282,10 @@ class GitHubClient:
                 or "abuse detection" in text_l
                 or "too many requests" in text_l
             ):
-                if any((t.token is None) or (t.remaining is None) or (t.remaining > 0) for t in self.tokens):
+                if any((t.remaining is None) or (t.remaining > 0) for t in self.tokens):
                     self._backoff(attempt)
                     continue
                 self._sleep_until_reset()
-                continue
-
-            # Repository-scoped GITHUB_TOKEN often cannot access external repos.
-            # If an authenticated request is denied, retry with unauthenticated/public mode.
-            if resp.status_code in (401, 403) and st.token:
-                if not any(t.token is None for t in self.tokens):
-                    self.tokens.append(TokenState(None))
-                self._backoff(attempt)
                 continue
 
             if resp.status_code in (500, 502, 503, 504):
@@ -360,7 +320,6 @@ class GitHubClient:
                 return
             page += 1
 
-
 # =========================
 # GitHub endpoints
 # =========================
@@ -375,48 +334,13 @@ def get_repo_meta(gh: GitHubClient, full_name: str) -> Dict[str, str]:
         "private": str(bool(data.get("private"))).lower(),
     }
 
-def list_workflows_via_actions_api(gh: GitHubClient, full_name: str) -> List[Dict]:
+def list_workflows(gh: GitHubClient, full_name: str) -> List[Dict]:
     url = f"https://api.github.com/repos/{full_name}/actions/workflows"
     data = gh.request_json("GET", url, params={"per_page": 100})
     if not isinstance(data, dict):
         return []
     wfs = data.get("workflows", [])
     return wfs if isinstance(wfs, list) else []
-
-def list_workflow_files_via_contents_api(gh: GitHubClient, full_name: str, ref: str) -> List[Dict]:
-    url = f"https://api.github.com/repos/{full_name}/contents/.github/workflows"
-    data = gh.request_json("GET", url, params={"ref": ref} if ref else {})
-    if not isinstance(data, list):
-        return []
-    out: List[Dict] = []
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        path = (item.get("path") or "").strip()
-        name = (item.get("name") or "").strip()
-        item_type = (item.get("type") or "").strip()
-        if item_type != "file":
-            continue
-        if not path.lower().endswith((".yml", ".yaml")):
-            continue
-        out.append({
-            "id": "",
-            "name": name or path.split("/")[-1],
-            "path": path,
-            "state": "active",
-        })
-    return out
-
-def list_workflows(gh: GitHubClient, full_name: str, default_branch: str) -> Tuple[List[Dict], str]:
-    api_items = list_workflows_via_actions_api(gh, full_name)
-    if api_items:
-        return api_items, "actions_api"
-
-    content_items = list_workflow_files_via_contents_api(gh, full_name, default_branch)
-    if content_items:
-        return content_items, "contents_api"
-
-    return [], "none"
 
 def fetch_file_text_at_ref(gh: GitHubClient, full_name: str, path: str, ref: str) -> str:
     url = f"https://api.github.com/repos/{full_name}/contents/{path.lstrip('/')}"
@@ -1279,22 +1203,12 @@ def follow_called_files(
 # =========================
 # Stage-1 processing
 # =========================
-def build_stage1_rows_for_repo(gh: GitHubClient, full_name: str, repo_url: str) -> Tuple[List[Dict[str, str]], Dict[str, object]]:
+def build_stage1_rows_for_repo(gh: GitHubClient, full_name: str, repo_url: str) -> List[Dict[str, str]]:
     meta = get_repo_meta(gh, full_name)
     default_branch = meta.get("default_branch") or "main"
 
-    workflows, workflow_source = list_workflows(gh, full_name, default_branch)
+    workflows = list_workflows(gh, full_name)
     out_rows: List[Dict[str, str]] = []
-    stats: Dict[str, object] = {
-        "repo": full_name,
-        "default_branch": default_branch,
-        "workflow_source": workflow_source,
-        "workflows_listed": len(workflows),
-        "workflow_files_seen": 0,
-        "workflow_yaml_loaded": 0,
-        "rows_written": 0,
-        "yaml_fetch_failures": [],
-    }
 
     for wf in workflows:
         wf_name = (wf.get("name") or "").strip()
@@ -1304,13 +1218,10 @@ def build_stage1_rows_for_repo(gh: GitHubClient, full_name: str, repo_url: str) 
 
         if not wf_path:
             continue
-        stats["workflow_files_seen"] = int(stats["workflow_files_seen"]) + 1
 
         yaml_text = fetch_file_text_at_ref(gh, full_name, wf_path, default_branch)
         if not yaml_text:
-            stats["yaml_fetch_failures"].append(wf_path)
             continue
-        stats["workflow_yaml_loaded"] = int(stats["workflow_yaml_loaded"]) + 1
 
         origin_ref_to_step_names = build_origin_ref_to_step_names(yaml_text)
 
@@ -1375,28 +1286,20 @@ def build_stage1_rows_for_repo(gh: GitHubClient, full_name: str, repo_url: str) 
             "stage1_extracted_at_utc": now_utc_iso(),
         }
         out_rows.append(row)
-        stats["rows_written"] = int(stats["rows_written"]) + 1
 
-    return out_rows, stats
+    return out_rows
 
 def main() -> None:
-    loaded_tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
-    tokens = external_repo_tokens()
+    try:
+        tokens = load_github_tokens(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
+        print(f"Loaded GitHub token pool size: {len(tokens)}")
+    except Exception:
+        tokens = load_tokens_from_env_file(TOKENS_ENV_PATH, max_tokens=MAX_TOKENS_TO_USE)
     gh = GitHubClient(tokens)
 
-    print(f"Stage1 ROOT_DIR: {ROOT_DIR}")
-    print(f"Stage1 input CSV: {IN_URL_LIST_CSV}")
-    print(f"Stage1 output CSV: {OUT_STAGE1_CSV}")
-    print(f"Stage1 token sources loaded: {len(loaded_tokens)}")
-    print(f"Stage1 PAT pool size: {len([t for t in tokens if t])}")
-    auth_modes = ["GH_PAT" if t else "unauthenticated" for t in tokens]
-    print(f"Stage1 cross-repo auth modes: {auth_modes}")
     url_rows, url_fields = read_csv_rows(IN_URL_LIST_CSV)
     if not url_rows:
         raise RuntimeError("URL_List.csv is empty.")
-
-    print(f"Stage1 loaded repo rows: {len(url_rows)}")
-    print(f"Stage1 input columns: {url_fields}")
 
     candidates = ["repo_urls", "repo_url", "url", "repo"]
 
@@ -1409,46 +1312,17 @@ def main() -> None:
         return ""
 
     repo_urls = unique_preserve([get_url(r) for r in url_rows])
-    print(f"Stage1 normalized repo URLs: {len(repo_urls)}")
-    print(f"Stage1 first repo URLs: {repo_urls[:3]}")
 
     stage1_rows: List[Dict[str, str]] = []
-
-    repos_seen = 0
-    repos_failed = 0
-    repos_with_any_workflows_listed = 0
-    workflow_files_seen = 0
-    workflow_yaml_loaded = 0
-    workflow_rows_written = 0
 
     for u in repo_urls:
         full_name = parse_repo_full_name(u)
         if not full_name:
-            print(f"[skip] invalid repo url: {u}")
             continue
-        repos_seen += 1
         try:
-            rows, stats = build_stage1_rows_for_repo(gh, full_name, u)
+            rows = build_stage1_rows_for_repo(gh, full_name, u)
             stage1_rows.extend(rows)
-
-            if int(stats.get("workflows_listed", 0) or 0) > 0:
-                repos_with_any_workflows_listed += 1
-            workflow_files_seen += int(stats.get("workflow_files_seen", 0) or 0)
-            workflow_yaml_loaded += int(stats.get("workflow_yaml_loaded", 0) or 0)
-            workflow_rows_written += int(stats.get("rows_written", 0) or 0)
-
-            print(
-                f"[repo] {full_name} "
-                f"source={stats.get('workflow_source')} "
-                f"listed={stats.get('workflows_listed')} "
-                f"yaml_loaded={stats.get('workflow_yaml_loaded')} "
-                f"rows_written={stats.get('rows_written')}"
-            )
-            yaml_failures = stats.get("yaml_fetch_failures") or []
-            if yaml_failures:
-                print(f"[repo-yaml-miss] {full_name}: {yaml_failures[:5]}")
         except Exception as e:
-            repos_failed += 1
             stage1_rows.append({
                 "repo_url": u,
                 "full_name": full_name,
@@ -1503,12 +1377,6 @@ def main() -> None:
     ]
 
     write_csv(OUT_STAGE1_CSV, out_fields, stage1_rows)
-    print(f"Stage1 repos seen: {repos_seen}")
-    print(f"Stage1 repos failed: {repos_failed}")
-    print(f"Stage1 repos with any workflows listed: {repos_with_any_workflows_listed}")
-    print(f"Stage1 workflow files seen: {workflow_files_seen}")
-    print(f"Stage1 workflow YAML loaded: {workflow_yaml_loaded}")
-    print(f"Stage1 rows written: {workflow_rows_written}")
     print("[done] Stage 1:", OUT_STAGE1_CSV, f"(rows={len(stage1_rows)})")
 
 if __name__ == "__main__":
