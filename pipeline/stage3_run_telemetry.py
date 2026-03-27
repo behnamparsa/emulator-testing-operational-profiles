@@ -203,124 +203,19 @@ def write_csv(path: Path, fieldnames: List[str], rows: List[Dict[str, object]]) 
             w.writerow({k: r.get(k, "") for k in fieldnames})
 
 
+
 # =========================
-# Final output schemas / cleanup
+# Final output schemas / cleanup (V20-aligned)
 # =========================
-RUN_OUTPUT_COLUMNS = [
-    "full_name",
-    "default_branch",
-    "workflow_identifier",
-    "workflow_id",
-    "workflow_path",
-    "looks_like_instru",
-    "styles",
-    "invocation_types",
-    "third_party_provider_name",
-    "test_invocation_step_names",
-    "jobs_before_anchor_count",
-    "called_instru_signal",
-    "called_instru_file_paths",
-    "called_instru_origin_refs",
-    "called_instru_origin_step_names",
-    "called_instru_file_types",
-    "run_id",
-    "run_number",
-    "run_attempt",
-    "head_sha",
-    "created_at",
-    "run_started_at",
-    "status",
-    "run_conclusion",
-    "event",
-    "head_branch",
-    "html_url",
-    "extracted_at_utc",
-    "queue_seconds",
-    "time_to_first_instru_from_run_seconds",
-    "instru_duration_seconds",
-    "core_instru_window_seconds",
-    "instru_exec_window_seconds",
-    "instru_job_count",
-]
-
-STEP_OUTPUT_COLUMNS = [
-    "full_name",
-    "workflow_id",
-    "run_id",
-    "run_attempt",
-    "declared_styles",
-    "job_name",
-    "step_number",
-    "step_name",
-    "status",
-    "conclusion",
-    "step_started_at",
-    "step_completed_at",
-    "seconds_from_run_start",
-    "global_step_index",
-    "anchor_match",
-    "explicit_instru",
-    "buildish",
-    "real_deviceish",
-    "thirdparty_marker",
-    "gmd_marker",
-    "androidish",
-    "custom_followed_file_support",
-    "called_origin_match",
-]
-
-PER_STYLE_OUTPUT_COLUMNS = [
-    "full_name",
-    "default_branch",
-    "workflow_identifier",
-    "workflow_id",
-    "workflow_path",
-    "looks_like_instru",
-    "styles",
-    "invocation_types",
-    "third_party_provider_name",
-    "test_invocation_step_names",
-    "jobs_before_anchor_count",
-    "called_instru_signal",
-    "called_instru_file_paths",
-    "called_instru_origin_refs",
-    "called_instru_origin_step_names",
-    "called_instru_file_types",
-    "run_id",
-    "run_number",
-    "run_attempt",
-    "head_sha",
-    "created_at",
-    "run_started_at",
-    "status",
-    "run_conclusion",
-    "event",
-    "head_branch",
-    "html_url",
-    "extracted_at_utc",
-    "queue_seconds",
-    "target_style",
-    "style_instru_job_count",
-    "time_to_first_instru_from_run_seconds",
-    "instru_duration_seconds",
-    "core_instru_window_seconds",
-    "instru_exec_window_seconds",
-]
-
 def _clean_output_row(row: Dict[str, object]) -> Dict[str, object]:
     clean = {}
     for k, v in row.items():
         kk = (k or "").replace(BOM, "").strip()
-        # drop legacy compatibility-only aliases from final emitted schema
-        if kk in {"repo_full_name", "workflow_run_id", "attempt", "Inferred_Label", "style"}:
-            continue
         clean[kk] = v
     return clean
 
 def _project_rows(rows: List[Dict[str, object]], columns: List[str]) -> List[Dict[str, object]]:
     return [{c: r.get(c, "") for c in columns} for r in rows]
-
-
 # =========================
 # Canonical style normalization
 # =========================
@@ -555,6 +450,18 @@ def parse_stage1_confirmed_called_refs(row: Dict[str, str]) -> List[str]:
 def stage1_confirmed_called_signal(row: Dict[str, str]) -> bool:
     return bool_from_any(row.get("called_instru_signal"))
 
+
+
+def row_is_instru_executed(row: Dict[str, str]) -> bool:
+    # V20 authoritative executed-subset gate from Stage 2 per-style inventory.
+    for key in ["style_instru_job_count", "instru_job_count"]:
+        v = norm(row.get(key))
+        try:
+            if v != "" and int(float(v)) > 0:
+                return True
+        except Exception:
+            pass
+    return False
 
 # =========================
 # Workflow YAML extraction
@@ -1247,6 +1154,108 @@ STYLE_METRIC_KEYS = [
 ]
 
 
+
+BASE_RUN_KEEP_FIELDS = [
+    "full_name",
+    "default_branch",
+    "workflow_path",
+    "workflow_id",
+    "workflow_identifier",
+    "run_id",
+    "run_number",
+    "run_attempt",
+    "head_sha",
+    "created_at",
+    "run_started_at",
+    "run_updated_at",
+    "status",
+    "run_conclusion",
+    "event",
+    "trigger",
+    "head_branch",
+    "html_url",
+    "looks_like_instru",
+    "styles",
+    "invocation_types",
+    "third_party_provider_name",
+    "test_invocation_step_names",
+    "anchor_job_ordinal",
+    "anchor_step_ordinal_in_job",
+    "called_instru_signal",
+    "called_instru_file_paths",
+    "called_instru_origin_refs",
+    "called_instru_origin_step_names",
+    "called_instru_file_types",
+    "instru_job_count",
+    "runner_os",
+    "runs_on",
+    "os",
+    "runner_labels",
+    "job_count_total",
+    "jobs_total",
+    "total_jobs",
+    "jobs_count",
+    "instru_distinct_job_count",
+    "instru_distinct_job_base_name_count",
+    "instru_matrix_like_job_count",
+    "instru_matrix_expanded_flag",
+    "instru_parallel_jobs_flag",
+    "instru_max_parallel_jobs",
+]
+
+OUT_FIELDNAMES_3A = BASE_RUN_KEEP_FIELDS + [
+    "styles_count_stage3",
+    "styles_stage3",
+]
+for sty, pref in [
+    ("Community", "community"),
+    ("Custom", "custom"),
+    ("GMD", "gmd"),
+    ("Third-Party", "third_party"),
+]:
+    for k in STYLE_METRIC_KEYS:
+        OUT_FIELDNAMES_3A.append(f"{pref}_{k}")
+OUT_FIELDNAMES_3A += [
+    "stage3_extracted_at_utc",
+    "stage3_error",
+]
+
+OUT_FIELDNAMES_3B = [
+    "full_name", "workflow_path", "workflow_ref", "run_id",
+    "run_attempt", "status", "run_conclusion", "event", "trigger",
+    "target_style",
+    "job_id", "job_url", "job_html_url", "job_ordinal_in_run", "step_ordinal_in_job",
+    "runner_os", "runner_labels", "runner_name",
+    "job_name", "step_name", "status_step", "conclusion_step",
+    "started_at", "completed_at", "duration_seconds",
+    "uses", "run",
+    "step_activity_group", "execution_role", "overhead_phase",
+    "phase_guess", "phase_reason", "phase_score", "phase_group_consistency",
+    "path_linked_to_selected_invocation",
+    "inside_invocation_execution_window",
+    "selected_invocation_cutpoint", "selected_execution_end_cutpoint",
+    "stage1_anchor_match", "stage1_anchor_match_reason",
+    "explicit_instru", "explicit_instru_reason",
+    "custom_followed_file_instru", "custom_stage1_supported_exec",
+    "setup_flag", "provision_flag", "artifact_report_flag", "cleanup_teardown_flag",
+    "third_party_provider_flag", "third_party_provider_name",
+    "stage3_extracted_at_utc",
+]
+
+PER_STYLE_FIELDS = [
+    "full_name",
+    "workflow_path",
+    "workflow_ref",
+    "run_id",
+    "run_attempt",
+    "status",
+    "run_conclusion",
+    "event",
+    "trigger",
+    "target_style",
+    "inferred_styles_all",
+] + STYLE_METRIC_KEYS + ["stage3_extracted_at_utc"]
+
 def empty_style_metric_dict() -> Dict[str, object]:
     return {k: "" for k in STYLE_METRIC_KEYS}
 
@@ -1388,55 +1397,97 @@ def build_run_level_row(base_row: Dict[str, str], style_payloads: Dict[str, Dict
 
 def build_step_breakdown_rows(base_row: Dict[str, str], step_rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
     out = []
-    declared = get_declared_styles(base_row)
-    for st in step_rows:
-        out.append(
-            {
-                "full_name": base_row.get("repo_full_name", ""),
-                "workflow_id": base_row.get("workflow_id", ""),
-                "run_id": base_row.get("workflow_run_id", ""),
-                "run_attempt": base_row.get("attempt", ""),
-                "declared_styles": "|".join(declared),
-                "job_name": st.get("job_name", ""),
-                "step_number": st.get("step_number", ""),
-                "step_name": st.get("step_name", ""),
-                "status": st.get("status", ""),
-                "conclusion": st.get("conclusion", ""),
-                "step_started_at": st.get("step_started_at").isoformat() if st.get("step_started_at") else "",
-                "step_completed_at": st.get("step_completed_at").isoformat() if st.get("step_completed_at") else "",
-                "seconds_from_run_start": st.get("seconds_from_run_start", ""),
-                "global_step_index": st.get("global_step_index", ""),
-                "anchor_match": st.get("anchor_match", False),
-                "explicit_instru": st.get("explicit_instru", False),
-                "buildish": st.get("buildish", False),
-                "real_deviceish": st.get("real_deviceish", False),
-                "thirdparty_marker": st.get("thirdparty_marker", False),
-                "gmd_marker": st.get("gmd_marker", False),
-                "androidish": st.get("androidish", False),
-                "custom_followed_file_support": st.get("custom_followed_file_support", False),
-                "called_origin_match": st.get("called_origin_match", False),
-            }
-        )
+    target_style = ""
+    ds = get_declared_styles(base_row)
+    if ds:
+        target_style = ds[0]
+    invocation_start = ""
+    execution_end = ""
+    try:
+        invocation_start = base_row.get("anchor_selected_seconds", "") or ""
+        execution_end = base_row.get("exec_end_selected_seconds", "") or ""
+    except Exception:
+        pass
+    for job_ord, st in enumerate(step_rows, start=1):
+        started = st.get("step_started_at")
+        completed = st.get("step_completed_at")
+        dur = dt_to_seconds(started, completed)
+        row = {
+            "full_name": get_repo_full_name(base_row),
+            "workflow_path": base_row.get("workflow_path", ""),
+            "workflow_ref": base_row.get("workflow_identifier", ""),
+            "run_id": get_run_id(base_row),
+            "run_attempt": get_attempt(base_row),
+            "status": base_row.get("status", ""),
+            "run_conclusion": base_row.get("run_conclusion", ""),
+            "event": base_row.get("event", ""),
+            "trigger": base_row.get("trigger", base_row.get("event", "")),
+            "target_style": target_style,
+            "job_id": "",
+            "job_url": "",
+            "job_html_url": "",
+            "job_ordinal_in_run": str(job_ord),
+            "step_ordinal_in_job": str(st.get("step_number", "")),
+            "runner_os": "",
+            "runner_labels": "",
+            "runner_name": "",
+            "job_name": st.get("job_name", ""),
+            "step_name": st.get("step_name", ""),
+            "status_step": st.get("status", ""),
+            "conclusion_step": st.get("conclusion", ""),
+            "started_at": started.isoformat() if started else "",
+            "completed_at": completed.isoformat() if completed else "",
+            "duration_seconds": "" if dur is None else str(dur),
+            "uses": st.get("uses", ""),
+            "run": st.get("run", ""),
+            "step_activity_group": "Test" if st.get("explicit_instru") else ("Setup" if st.get("buildish") else "Other"),
+            "execution_role": "execution" if st.get("explicit_instru") else ("anchor" if st.get("anchor_match") else "other"),
+            "overhead_phase": "post" if st.get("real_deviceish") else ("pre" if st.get("buildish") else ""),
+            "phase_guess": "invocation_execution" if st.get("explicit_instru") else ("pre_invocation" if st.get("buildish") else "other"),
+            "phase_reason": "explicit_instru" if st.get("explicit_instru") else ("buildish" if st.get("buildish") else ""),
+            "phase_score": "5" if st.get("explicit_instru") else ("2" if st.get("buildish") else "0"),
+            "phase_group_consistency": "consistent" if st.get("explicit_instru") else "",
+            "path_linked_to_selected_invocation": "true" if (st.get("anchor_match") or st.get("explicit_instru") or st.get("called_origin_match")) else "false",
+            "inside_invocation_execution_window": "true" if st.get("explicit_instru") else "false",
+            "selected_invocation_cutpoint": str(invocation_start),
+            "selected_execution_end_cutpoint": str(execution_end),
+            "stage1_anchor_match": "true" if st.get("anchor_match") else "false",
+            "stage1_anchor_match_reason": "stage1_anchor_match" if st.get("anchor_match") else "",
+            "explicit_instru": "true" if st.get("explicit_instru") else "false",
+            "explicit_instru_reason": "explicit_instru" if st.get("explicit_instru") else "",
+            "custom_followed_file_instru": "true" if st.get("custom_followed_file_support") else "false",
+            "custom_stage1_supported_exec": "true" if st.get("called_origin_match") else "false",
+            "setup_flag": "true" if st.get("buildish") else "false",
+            "provision_flag": "false",
+            "artifact_report_flag": "false",
+            "cleanup_teardown_flag": "false",
+            "third_party_provider_flag": "true" if st.get("thirdparty_marker") else "false",
+            "third_party_provider_name": base_row.get("third_party_provider_name", ""),
+        }
+        out.append(row)
     return out
 
 
-def build_run_per_style_rows(base_row: Dict[str, str], style_payloads: Dict[str, Dict[str, object]]) -> List[Dict[str, object]]:
+def build_run_per_style_rows(base_row: Dict[str, str], style_payloads: Dict[str, Dict[str, object]], extracted_ts: str = "") -> List[Dict[str, object]]:
     out = []
-    styles_to_emit = list(style_payloads.keys())
-    for style in styles_to_emit:
-        p = style_payloads.get(style, empty_style_metric_dict())
-        row = _clean_output_row(dict(base_row))
-        row["target_style"] = style
-        row["style_instru_job_count"] = "1" if style_has_executed_instru(p) else "0"
+    inferred = "|".join(get_declared_styles(base_row))
+    for style, p in style_payloads.items():
+        row = {
+            "full_name": get_repo_full_name(base_row),
+            "workflow_path": base_row.get("workflow_path", ""),
+            "workflow_ref": base_row.get("workflow_identifier", ""),
+            "run_id": get_run_id(base_row),
+            "run_attempt": get_attempt(base_row),
+            "status": base_row.get("status", ""),
+            "run_conclusion": base_row.get("run_conclusion", ""),
+            "event": base_row.get("event", ""),
+            "trigger": base_row.get("trigger", base_row.get("event", "")),
+            "target_style": style,
+            "inferred_styles_all": inferred,
+            "stage3_extracted_at_utc": extracted_ts,
+        }
         for k in STYLE_METRIC_KEYS:
             row[k] = p.get(k, "")
-        row["time_to_first_instru_from_run_seconds"] = p.get("time_to_first_instru_from_run_seconds", "")
-        row["instru_duration_seconds"] = p.get("instru_duration_seconds", "")
-        row["core_instru_window_seconds"] = p.get("core_instru_window_seconds", "")
-        row["instru_exec_window_seconds"] = p.get("instru_exec_window_seconds", "")
-        row["full_name"] = row.get("full_name") or base_row.get("repo_full_name", "")
-        row["run_id"] = row.get("run_id") or base_row.get("workflow_run_id", "")
-        row["run_attempt"] = row.get("run_attempt") or base_row.get("attempt", "")
         out.append(row)
     return out
 
@@ -1444,6 +1495,7 @@ def build_run_per_style_rows(base_row: Dict[str, str], style_payloads: Dict[str,
 # =========================
 # Main
 # =========================
+
 
 def main() -> None:
     tokens = []
@@ -1455,104 +1507,151 @@ def main() -> None:
     gh = GitHubClient(tokens)
 
     run_rows = read_csv_rows(IN_STAGE2_RUN_CSV)
-    per_style_driver_rows = read_csv_rows(IN_STAGE2_PER_STYLE_CSV)
+    style_rows = read_csv_rows(IN_STAGE2_PER_STYLE_CSV)
 
-    print(f"Stage3 run input rows: {len(run_rows)} from {IN_STAGE2_RUN_CSV}")
-    print(f"Stage3 per-style input rows: {len(per_style_driver_rows)} from {IN_STAGE2_PER_STYLE_CSV}")
-
-    # Build run-level reference by (repo, run_id, attempt) so each per-style row can inherit rich Stage2 fields.
-    run_ref: Dict[Tuple[str, str, str], Dict[str, str]] = {}
-    for r in run_rows:
-        rr = adapt_base_row_for_stage3(r)
-        key = (rr.get("repo_full_name",""), rr.get("workflow_run_id",""), rr.get("attempt",""))
-        run_ref[key] = rr
-
-    driver_rows: List[Dict[str, str]] = []
-    for r in per_style_driver_rows:
-        rr = adapt_base_row_for_stage3(r)
-        key = (rr.get("repo_full_name",""), rr.get("workflow_run_id",""), rr.get("attempt",""))
-        merged = dict(run_ref.get(key, {}))
-        merged.update(rr)  # per-style row should win for style field
-        driver_rows.append(merged)
+    total_rows_before_filter = len(style_rows)
 
     if PROCESS_ONLY_RELEVANT_ROWS:
-        driver_rows = [r for r in driver_rows if get_declared_styles(r)]
+        style_rows = [
+            r for r in style_rows
+            if norm(r.get("run_id"))
+            and normalize_style_label(r.get("target_style")) in ["Community", "Custom", "GMD", "Third-Party"]
+        ]
+    total_rows_after_runid_filter = len(style_rows)
 
-    run_rows_out: List[Dict[str, object]] = []
-    step_rows_out: List[Dict[str, object]] = []
-    per_style_rows_out: List[Dict[str, object]] = []
+    style_rows = [r for r in style_rows if row_is_instru_executed(r)]
+    total_rows_after_exec_filter = len(style_rows)
 
-    iterator = tqdm(driver_rows, desc="Stage3") if tqdm else driver_rows
+    if total_rows_after_exec_filter == 0:
+        raise RuntimeError(
+            "Stage 3 executed-run filter removed all rows. "
+            "Check that run_inventory_per_style.csv contains style_instru_job_count and that it is populated correctly."
+        )
 
-    # Avoid duplicate expensive job fetches across multiple per-style rows for the same run
-    processed_runs: Set[Tuple[str, str, str]] = set()
+    run_index: Dict[str, Dict[str, str]] = {}
+    for r in run_rows:
+        rid = norm(r.get("run_id"))
+        if rid:
+            run_index[rid] = adapt_base_row_for_stage3(r)
 
-    for row in iterator:
-        repo_full_name = get_repo_full_name(row)
-        run_id = get_run_id(row)
-        attempt = get_attempt(row)
-        owner, repo = parse_owner_repo(repo_full_name)
-        if not owner or not repo or not run_id:
-            per_style_rows_out.extend(build_run_per_style_rows(row, {}))
-            continue
+    all_step_rows: List[Dict[str, object]] = []
+    all_per_style_rows: List[Dict[str, object]] = []
+    run_level_rows: List[Dict[str, object]] = []
+    extracted_ts = now_utc_iso()
 
-        run_key = (repo_full_name, run_id, attempt)
-        if run_key in processed_runs:
-            # Still emit per-style row for this driver row using empty payload if duplicate;
-            # duplicates are not expected when driver is run_inventory_per_style, but guard anyway.
-            per_style_rows_out.extend(build_run_per_style_rows(row, {}))
-            continue
+    style_to_pref = {
+        "Community": "community",
+        "Custom": "custom",
+        "GMD": "gmd",
+        "Third-Party": "third_party",
+    }
 
-        processed_runs.add(run_key)
+    iterator = tqdm(style_rows, desc="Stage3 V18") if tqdm else style_rows
 
-        jobs = gh_list_all_jobs_for_run(gh, owner, repo, run_id)
-        steps = jobs_to_step_rows(jobs, row)
+    current_run_id = None
+    current_run_out: Optional[Dict[str, object]] = None
+    current_seen_styles: List[str] = []
 
-        style_payloads: Dict[str, Dict[str, object]] = {}
-        for style in get_declared_styles(row):
-            payload = compute_style_metrics_for_run(row, steps, style)
-            if style_has_executed_instru(payload):
-                style_payloads[style] = payload
+    def flush_current_run():
+        nonlocal current_run_out, current_seen_styles
+        if current_run_out is None:
+            return
+        current_run_out["styles_count_stage3"] = len(unique_preserve(current_seen_styles))
+        current_run_out["styles_stage3"] = safe_join_names(current_seen_styles)
+        current_run_out["stage3_extracted_at_utc"] = extracted_ts
+        current_run_out["stage3_error"] = current_run_out.get("stage3_error", "")
+        run_level_rows.append(current_run_out)
+        current_run_out = None
+        current_seen_styles = []
 
-        # V20-aligned executed-subset gate:
-        # only retain rows/runs where instrumentation actually executed.
-        if not style_payloads:
-            continue
+    for style_row in iterator:
+        style_row = adapt_base_row_for_stage3(style_row)
+        run_id = norm(style_row.get("run_id") or style_row.get("workflow_run_id"))
+        run_row = dict(run_index.get(run_id, {}))
+        run_row.update(style_row)
 
-        run_rows_out.append(build_run_level_row(row, style_payloads))
-        step_rows_out.extend(build_step_breakdown_rows(row, steps))
-        per_style_rows_out.extend(build_run_per_style_rows(row, style_payloads))
-
-    # De-duplicate final outputs with current schema keys
-    def dedupe_rows(rows: List[Dict[str, object]], keys: List[str]) -> List[Dict[str, object]]:
-        seen = set()
-        out = []
-        for r in rows:
-            k = tuple(str(r.get(x, "")) for x in keys)
-            if k in seen:
+        try:
+            repo_full_name = get_repo_full_name(run_row)
+            owner, repo = parse_owner_repo(repo_full_name)
+            if not owner or not repo or not run_id:
                 continue
-            seen.add(k)
-            out.append(r)
-        return out
 
-    run_rows_out = dedupe_rows(run_rows_out, ["repo_full_name", "workflow_run_id", "attempt"])
-    step_rows_out = dedupe_rows(step_rows_out, ["full_name", "run_id", "run_attempt", "job_name", "global_step_index", "step_name"])
-    per_style_rows_out = dedupe_rows(per_style_rows_out, ["repo_full_name", "workflow_run_id", "attempt", "style"])
+            jobs = gh_list_all_jobs_for_run(gh, owner, repo, run_id)
+            steps = jobs_to_step_rows(jobs, run_row)
 
-    run_rows_out = [_clean_output_row(r) for r in run_rows_out]
-    step_rows_out = [_clean_output_row(r) for r in step_rows_out]
-    per_style_rows_out = [_clean_output_row(r) for r in per_style_rows_out]
+            # compute only for the style row's target style
+            target_style = normalize_style_label(style_row.get("target_style"))
+            if target_style not in ["Community", "Custom", "GMD", "Third-Party"]:
+                continue
+            payload = compute_style_metrics_for_run(run_row, steps, target_style)
 
-    write_csv(OUT_STAGE3A_RUNS_CSV, RUN_OUTPUT_COLUMNS, _project_rows(run_rows_out, RUN_OUTPUT_COLUMNS))
-    write_csv(OUT_STAGE3B_STEPS_CSV, STEP_OUTPUT_COLUMNS, _project_rows(step_rows_out, STEP_OUTPUT_COLUMNS))
-    write_csv(OUT_STAGE3C_RUN_PER_STYLE_CSV, PER_STYLE_OUTPUT_COLUMNS, _project_rows(per_style_rows_out, PER_STYLE_OUTPUT_COLUMNS))
+            if not style_has_executed_instru(payload):
+                continue
 
-    print(f"[done] Stage 3 runs rows={len(run_rows_out)} steps rows={len(step_rows_out)} per-style rows={len(per_style_rows_out)}")
+            # enrich payload with V20-style support fields available from current pipeline
+            payload["style_instru_job_count"] = "1"
+
+            per_style_row = build_run_per_style_rows(run_row, {target_style: payload}, extracted_ts)[0]
+            all_per_style_rows.append(per_style_row)
+
+            for sr in build_step_breakdown_rows(run_row, steps):
+                sr["target_style"] = target_style
+                sr["stage3_extracted_at_utc"] = extracted_ts
+                all_step_rows.append(sr)
+
+            if current_run_id != run_id:
+                flush_current_run()
+                current_run_id = run_id
+                base_run = {k: run_row.get(k, "") for k in BASE_RUN_KEEP_FIELDS}
+                base_run["run_attempt"] = get_attempt(run_row)
+                base_run["status"] = run_row.get("status", "")
+                base_run["run_conclusion"] = run_row.get("run_conclusion", "")
+                base_run["event"] = run_row.get("event", "")
+                base_run["trigger"] = run_row.get("trigger", run_row.get("event", ""))
+                for sty, pref in style_to_pref.items():
+                    for k in STYLE_METRIC_KEYS:
+                        base_run[f"{pref}_{k}"] = ""
+                base_run["stage3_error"] = ""
+                current_run_out = base_run
+
+            current_seen_styles.append(target_style)
+            pref = style_to_pref[target_style]
+            for k in STYLE_METRIC_KEYS:
+                current_run_out[f"{pref}_{k}"] = per_style_row.get(k, "")
+
+        except Exception as e:
+            if current_run_id != run_id:
+                flush_current_run()
+                current_run_id = run_id
+                base_run = dict(run_row) if run_row else dict(style_row)
+                base_run["run_attempt"] = get_attempt(base_run)
+                base_run["status"] = base_run.get("status", "")
+                base_run["run_conclusion"] = base_run.get("run_conclusion", "")
+                base_run["event"] = base_run.get("event", "")
+                base_run["trigger"] = base_run.get("trigger", base_run.get("event", ""))
+                for k in BASE_RUN_KEEP_FIELDS:
+                    base_run.setdefault(k, "")
+                for sty, pref in style_to_pref.items():
+                    for k in STYLE_METRIC_KEYS:
+                        base_run[f"{pref}_{k}"] = ""
+                base_run["stage3_error"] = str(e)
+                current_run_out = base_run
+                current_seen_styles = []
+
+    flush_current_run()
+
+    write_csv(OUT_STAGE3B_STEPS_CSV, OUT_FIELDNAMES_3B, _project_rows([_clean_output_row(r) for r in all_step_rows], OUT_FIELDNAMES_3B))
+    write_csv(OUT_STAGE3A_RUNS_CSV, OUT_FIELDNAMES_3A, _project_rows([_clean_output_row(r) for r in run_level_rows], OUT_FIELDNAMES_3A))
+    write_csv(OUT_STAGE3C_RUN_PER_STYLE_CSV, PER_STYLE_FIELDS, _project_rows([_clean_output_row(r) for r in all_per_style_rows], PER_STYLE_FIELDS))
+
+    print("[info] Stage 3 input rows before any filter:", total_rows_before_filter)
+    print("[info] Stage 3 rows after run_id/style filter:", total_rows_after_runid_filter)
+    print("[info] Stage 3 rows after executed-run filter (style_instru_job_count > 0):", total_rows_after_exec_filter)
+
+    print("[done] Run metrics:", OUT_STAGE3A_RUNS_CSV)
+    print("[done] Step breakdown:", OUT_STAGE3B_STEPS_CSV)
+    print("[done] Run x style:", OUT_STAGE3C_RUN_PER_STYLE_CSV)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as exc:
-        print(f"[error] Stage 3 failed: {exc}", file=sys.stderr)
-        raise
+    main()
