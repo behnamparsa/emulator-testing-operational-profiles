@@ -63,43 +63,32 @@ jobs:
           python - <<'PY'
           import csv
           from pathlib import Path
-
           src = Path('data/processed/run_inventory_per_style.csv')
           dst = Path('data/processed/stage3_inputs/run_inventory_per_style.executed_only.csv')
-
           with src.open('r', encoding='utf-8', errors='ignore', newline='') as f:
               reader = csv.DictReader(f)
               fieldnames = reader.fieldnames or []
               rows = [dict(r) for r in reader]
-
           if not fieldnames:
               raise RuntimeError('run_inventory_per_style.csv is missing headers')
           if 'style_instru_job_count' not in fieldnames:
               raise RuntimeError('run_inventory_per_style.csv is missing style_instru_job_count')
-
           def as_int(v):
               try:
                   return int(str(v).strip())
               except Exception:
                   return 0
-
           kept = [r for r in rows if as_int(r.get('style_instru_job_count')) > 0]
-
           with dst.open('w', encoding='utf-8', newline='') as f:
               writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
               writer.writeheader()
               for row in kept:
                   writer.writerow(row)
-
           print(f'total_rows={len(rows)}')
           print(f'kept_rows={len(kept)}')
           print(f'filtered_file={dst}')
-
           if not kept:
-              raise RuntimeError(
-                  'After filtering run_inventory_per_style.csv on style_instru_job_count > 0, '
-                  'no Stage 3 executable rows remain.'
-              )
+              raise RuntimeError('After filtering run_inventory_per_style.csv on style_instru_job_count > 0, no Stage 3 executable rows remain.')
           PY
 
       - name: Show filtered Stage 3 driver preview
@@ -130,16 +119,11 @@ jobs:
         name: Build Stage 3 shard matrix
         run: |
           python - <<'PY'
-          import json
-          import os
+          import json, os
           from pathlib import Path
-
           root = Path('data/processed/stage3_shards')
           shards = sorted([p.name for p in root.iterdir() if p.is_dir()])
           matrix = {'include': [{'shard_id': s} for s in shards]}
-
-          print(matrix)
-
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f"shard_matrix={json.dumps(matrix)}\n")
               fh.write(f"shard_count={len(shards)}\n")
@@ -152,16 +136,13 @@ jobs:
       fail-fast: false
       max-parallel: ${{ fromJson(inputs.max_parallel) }}
       matrix: ${{ fromJson(needs.prepare-stage3-shards.outputs.shard_matrix) }}
-
     uses: ./.github/workflows/2_03_dataprocess_stage3_shard_worker.yml
     with:
       shard_id: ${{ matrix.shard_id }}
     secrets: inherit
 
   aggregate-stage3:
-    needs:
-      - prepare-stage3-shards
-      - run-stage3-shards
+    needs: [prepare-stage3-shards, run-stage3-shards]
     if: ${{ needs.run-stage3-shards.result == 'success' }}
     runs-on: ubuntu-latest
 
@@ -188,22 +169,13 @@ jobs:
           path: data/processed/stage3_shards_downloaded
           merge-multiple: false
 
-      - name: Show downloaded Stage 3 shard outputs
-        if: always()
-        run: |
-          echo "Downloaded directory tree:"
-          find data/processed/stage3_shards_downloaded -maxdepth 5 -print || true
-
       - name: Validate Stage 3 shard downloads are complete
         env:
           EXPECTED_SHARDS: ${{ needs.prepare-stage3-shards.outputs.shard_count }}
         run: |
           test -d data/processed/stage3_shards_downloaded
           actual=$(find data/processed/stage3_shards_downloaded -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
-          echo "Expected shard artifacts: ${EXPECTED_SHARDS}"
-          echo "Actual downloaded shard artifact dirs: ${actual}"
           test "${actual}" = "${EXPECTED_SHARDS}"
-
           find data/processed/stage3_shards_downloaded -mindepth 1 -maxdepth 1 -type d | while read -r d; do
             test -f "$d/run_metrics_v16_stage3_enhanced.csv"
             test -f "$d/run_steps_v16_stage3_breakdown.csv.gz"
@@ -216,58 +188,54 @@ jobs:
           mkdir -p data/processed
           python scripts/aggregate_selected_results.py             --input-dir data/processed/stage3_shards_downloaded             --output-dir data/processed             --file run_metrics_v16_stage3_enhanced.csv
 
-      - name: Inspect aggregated run_metrics
-        if: always()
-        run: |
-          echo "run_metrics lines:"
-          wc -l data/processed/run_metrics_v16_stage3_enhanced.csv || true
-          echo "run_metrics preview:"
-          sed -n '1,10p' data/processed/run_metrics_v16_stage3_enhanced.csv || true
-
-      - name: Aggregate and gzip run_steps_v16_stage3_breakdown.csv
+      - name: Aggregate run_steps_v16_stage3_breakdown.csv from shard gz files
         run: |
           rm -f data/processed/run_steps_v16_stage3_breakdown.csv
-          rm -f data/processed/run_steps_v16_stage3_breakdown.csv.gz
           python - <<'PY'
-          import gzip
-          import shutil
+          import csv, gzip
           from pathlib import Path
-          import subprocess
-          import sys
-
-          subprocess.run([
-              sys.executable,
-              'scripts/aggregate_selected_results.py',
-              '--input-dir', 'data/processed/stage3_shards_downloaded',
-              '--output-dir', 'data/processed',
-              '--file', 'run_steps_v16_stage3_breakdown.csv.gz',
-          ], check=True)
-
-          src = Path('data/processed/run_steps_v16_stage3_breakdown.csv.gz')
-          if not src.exists():
-              raise RuntimeError('Expected aggregated gzip step output was not created')
-          print(f'Aggregated gzip created at {src}')
-          print(f'Gzip size bytes: {src.stat().st_size}')
+          root = Path('data/processed/stage3_shards_downloaded')
+          shard_dirs = sorted([p for p in root.iterdir() if p.is_dir()])
+          out_path = Path('data/processed/run_steps_v16_stage3_breakdown.csv')
+          writer = None
+          out_f = None
+          expected_fieldnames = None
+          try:
+              for shard_dir in shard_dirs:
+                  src = shard_dir / 'run_steps_v16_stage3_breakdown.csv.gz'
+                  with gzip.open(src, 'rt', encoding='utf-8', errors='replace', newline='') as f:
+                      reader = csv.DictReader(f)
+                      fieldnames = reader.fieldnames or []
+                      if not fieldnames:
+                          raise RuntimeError(f'No headers found in {src}')
+                      if expected_fieldnames is None:
+                          expected_fieldnames = fieldnames
+                          out_f = out_path.open('w', encoding='utf-8', newline='')
+                          writer = csv.DictWriter(out_f, fieldnames=expected_fieldnames, extrasaction='ignore')
+                          writer.writeheader()
+                      elif fieldnames != expected_fieldnames:
+                          raise RuntimeError(f'Header mismatch in {src}')
+                      for row in reader:
+                          writer.writerow(row)
+          finally:
+              if out_f is not None:
+                  out_f.close()
+          if expected_fieldnames is None:
+              raise RuntimeError('No shard step telemetry files were aggregated')
+          print(out_path)
           PY
 
-      - name: Inspect aggregated gzip run_steps
-        if: always()
+      - name: Zip aggregated run_steps_v16_stage3_breakdown.csv
         run: |
-          echo "run_steps gzip size (bytes):"
-          stat -c %s data/processed/run_steps_v16_stage3_breakdown.csv.gz || true
-          echo "run_steps gzip preview:"
+          rm -f data/processed/run_steps_v16_stage3_breakdown.zip
           python - <<'PY'
-          import gzip
-          from itertools import islice
+          import zipfile
           from pathlib import Path
-
-          path = Path('data/processed/run_steps_v16_stage3_breakdown.csv.gz')
-          if path.exists():
-              with gzip.open(path, 'rt', encoding='utf-8', errors='replace') as f:
-                  for line in islice(f, 10):
-                      print(line.rstrip())
-          else:
-              print('gzip file missing')
+          csv_path = Path('data/processed/run_steps_v16_stage3_breakdown.csv')
+          zip_path = Path('data/processed/run_steps_v16_stage3_breakdown.zip')
+          with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+              zf.write(csv_path, arcname=csv_path.name)
+          print(zip_path)
           PY
 
       - name: Aggregate run_per_style_v1_stage3.csv
@@ -275,18 +243,11 @@ jobs:
           rm -f data/processed/run_per_style_v1_stage3.csv
           python scripts/aggregate_selected_results.py             --input-dir data/processed/stage3_shards_downloaded             --output-dir data/processed             --file run_per_style_v1_stage3.csv
 
-      - name: Inspect aggregated run_per_style
-        if: always()
-        run: |
-          echo "run_per_style lines:"
-          wc -l data/processed/run_per_style_v1_stage3.csv || true
-          echo "run_per_style preview:"
-          sed -n '1,10p' data/processed/run_per_style_v1_stage3.csv || true
-
       - name: Validate Stage 3 outputs exist
         run: |
           test -f data/processed/run_metrics_v16_stage3_enhanced.csv
-          test -f data/processed/run_steps_v16_stage3_breakdown.csv.gz
+          test -f data/processed/run_steps_v16_stage3_breakdown.csv
+          test -f data/processed/run_steps_v16_stage3_breakdown.zip
           test -f data/processed/run_per_style_v1_stage3.csv
 
       - name: Commit Stage 3 summary outputs only
@@ -296,25 +257,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/processed/run_metrics_v16_stage3_enhanced.csv                   data/processed/run_per_style_v1_stage3.csv
-
           if git diff --cached --quiet; then
-            echo "No summary-output changes to commit."
             exit 0
           fi
-
           git commit -m "Stage 3 manager: telemetry summary outputs"
-
           pushed=0
           for i in 1 2 3; do
-            echo "Push attempt ${i}"
             if git pull --rebase origin main && git push origin HEAD:main; then
               pushed=1
               break
             fi
-            echo "Push attempt ${i} failed; retrying after 10s..."
             sleep 10
           done
-
           test "${pushed}" = "1"
 
       - name: Upload Stage 3 artifacts
@@ -323,6 +277,6 @@ jobs:
           name: stage3
           path: |
             data/processed/run_metrics_v16_stage3_enhanced.csv
-            data/processed/run_steps_v16_stage3_breakdown.csv.gz
+            data/processed/run_steps_v16_stage3_breakdown.zip
             data/processed/run_per_style_v1_stage3.csv
           if-no-files-found: error

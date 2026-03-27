@@ -46,18 +46,10 @@ jobs:
         run: |
           test -f "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory.csv"
           test -f "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory_per_style.csv"
-
           rm -rf "${{ inputs.shard_root }}/${{ inputs.shard_id }}"
           mkdir -p "${{ inputs.shard_root }}/${{ inputs.shard_id }}"
           cp "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory.csv"              "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv"
           cp "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory_per_style.csv"              "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv"
-
-          echo "Stage 3 driver lines:"
-          wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv" || true
-          echo "Stage 3 reference lines:"
-          wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv" || true
-          echo "Stage 3 driver preview:"
-          sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv" || true
 
       - name: Run Stage 3
         env:
@@ -76,51 +68,15 @@ jobs:
         run: |
           test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv"
           python - <<'PY'
-          import gzip
-          import shutil
+          import gzip, shutil
           from pathlib import Path
-
           src = Path("${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv")
           dst = src.with_suffix(src.suffix + '.gz')
-
           with src.open('rb') as f_in, gzip.open(dst, 'wb', compresslevel=6) as f_out:
               shutil.copyfileobj(f_in, f_out)
-
           src.unlink()
-
-          print(f'Created {dst}')
-          print(f'gzip size bytes: {dst.stat().st_size}')
+          print(dst)
           PY
-
-      - name: Inspect Stage 3 outputs
-        if: always()
-        run: |
-          echo "run_metrics lines:"
-          wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_metrics_v16_stage3_enhanced.csv" || true
-          echo "run_steps gzip size (bytes):"
-          stat -c %s "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv.gz" || true
-          echo "run_per_style lines:"
-          wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv" || true
-          echo "run_metrics preview:"
-          sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_metrics_v16_stage3_enhanced.csv" || true
-          echo "run_steps gzip preview:"
-          python - <<'PY'
-          import gzip
-          from itertools import islice
-          from pathlib import Path
-
-          path = Path("${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv.gz")
-          if path.exists():
-              with gzip.open(path, 'rt', encoding='utf-8', errors='replace') as f:
-                  for line in islice(f, 10):
-                      print(line.rstrip())
-          else:
-              print('gzip file missing')
-          PY
-          echo "run_per_style preview:"
-          sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv" || true
-          echo "Shard folder contents:"
-          find "${{ inputs.shard_root }}/${{ inputs.shard_id }}" -maxdepth 3 -print || true
 
       - name: Validate Stage 3 outputs exist
         run: |
