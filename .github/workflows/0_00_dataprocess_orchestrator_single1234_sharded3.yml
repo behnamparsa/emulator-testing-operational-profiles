@@ -1,0 +1,391 @@
+name: 0_00_dataprocess_orchestrator_single1234_sharded3
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or tag to run the child workflows on
+        required: false
+        default: ''
+      stage3_chunk_size:
+        description: Per-style rows per Stage 3 shard
+        required: false
+        default: '10'
+      stage3_max_parallel:
+        description: Max parallel Stage 3 shards
+        required: false
+        default: '3'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: dataprocess-orchestrator-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  orchestrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4320
+
+    steps:
+      - name: Resolve target ref
+        id: ref
+        shell: bash
+        run: |
+          TARGET_REF="${{ inputs.ref }}"
+          if [ -z "$TARGET_REF" ]; then
+            TARGET_REF="${GITHUB_REF_NAME}"
+          fi
+          echo "target_ref=$TARGET_REF" >> "$GITHUB_OUTPUT"
+          echo "Using ref: $TARGET_REF"
+
+      - name: Run Stage 1 single workflow
+        uses: actions/github-script@v8
+        env:
+          WORKFLOW_FILE: 1_01_dataprocess_stage1_single.yml
+          TARGET_REF: ${{ steps.ref.outputs.target_ref }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const workflowId = process.env.WORKFLOW_FILE;
+            const ref = process.env.TARGET_REF;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const dispatchTime = new Date().toISOString();
+
+            async function sleep(ms) {
+              return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            core.info(`Dispatching ${workflowId} on ref ${ref}`);
+            await github.rest.actions.createWorkflowDispatch({
+              owner, repo, workflow_id: workflowId, ref
+            });
+
+            let runId = null;
+            for (let attempt = 0; attempt < 36 && !runId; attempt++) {
+              await sleep(10000);
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: workflowId,
+                event: "workflow_dispatch",
+                branch: ref,
+                per_page: 20
+              });
+
+              const match = runs.data.workflow_runs.find(r => r.created_at >= dispatchTime);
+              if (match) {
+                runId = match.id;
+                core.info(`Found run ${runId} for ${workflowId}`);
+              }
+            }
+
+            if (!runId) {
+              core.setFailed(`Could not find dispatched run for ${workflowId}`);
+              return;
+            }
+
+            while (true) {
+              await sleep(20000);
+              const run = await github.rest.actions.getWorkflowRun({
+                owner, repo, run_id: runId
+              });
+
+              core.info(`${workflowId}: status=${run.data.status}, conclusion=${run.data.conclusion}`);
+              if (run.data.status === "completed") {
+                core.summary
+                  .addHeading(`Completed: ${workflowId}`)
+                  .addRaw(`Run ID: ${runId}<br/>`)
+                  .addRaw(`Conclusion: ${run.data.conclusion}<br/>`)
+                  .write();
+                if (run.data.conclusion !== "success") {
+                  core.setFailed(`${workflowId} finished with conclusion=${run.data.conclusion}`);
+                }
+                break;
+              }
+            }
+
+      - name: Run Stage 2 single workflow
+        uses: actions/github-script@v8
+        env:
+          WORKFLOW_FILE: 1_02_dataprocess_stage2_single.yml
+          TARGET_REF: ${{ steps.ref.outputs.target_ref }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const workflowId = process.env.WORKFLOW_FILE;
+            const ref = process.env.TARGET_REF;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const dispatchTime = new Date().toISOString();
+
+            async function sleep(ms) {
+              return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            core.info(`Dispatching ${workflowId} on ref ${ref}`);
+            await github.rest.actions.createWorkflowDispatch({
+              owner, repo, workflow_id: workflowId, ref
+            });
+
+            let runId = null;
+            for (let attempt = 0; attempt < 36 && !runId; attempt++) {
+              await sleep(10000);
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: workflowId,
+                event: "workflow_dispatch",
+                branch: ref,
+                per_page: 20
+              });
+
+              const match = runs.data.workflow_runs.find(r => r.created_at >= dispatchTime);
+              if (match) {
+                runId = match.id;
+                core.info(`Found run ${runId} for ${workflowId}`);
+              }
+            }
+
+            if (!runId) {
+              core.setFailed(`Could not find dispatched run for ${workflowId}`);
+              return;
+            }
+
+            while (true) {
+              await sleep(20000);
+              const run = await github.rest.actions.getWorkflowRun({
+                owner, repo, run_id: runId
+              });
+
+              core.info(`${workflowId}: status=${run.data.status}, conclusion=${run.data.conclusion}`);
+              if (run.data.status === "completed") {
+                core.summary
+                  .addHeading(`Completed: ${workflowId}`)
+                  .addRaw(`Run ID: ${runId}<br/>`)
+                  .addRaw(`Conclusion: ${run.data.conclusion}<br/>`)
+                  .write();
+                if (run.data.conclusion !== "success") {
+                  core.setFailed(`${workflowId} finished with conclusion=${run.data.conclusion}`);
+                }
+                break;
+              }
+            }
+
+      - name: Run Stage 3 sharded manager workflow
+        uses: actions/github-script@v8
+        env:
+          WORKFLOW_FILE: 2_03_dataprocess_stage3_sharded_manager.yml
+          TARGET_REF: ${{ steps.ref.outputs.target_ref }}
+          STAGE3_CHUNK_SIZE: ${{ inputs.stage3_chunk_size }}
+          STAGE3_MAX_PARALLEL: ${{ inputs.stage3_max_parallel }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const workflowId = process.env.WORKFLOW_FILE;
+            const ref = process.env.TARGET_REF;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const dispatchTime = new Date().toISOString();
+
+            async function sleep(ms) {
+              return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            core.info(`Dispatching ${workflowId} on ref ${ref}`);
+            await github.rest.actions.createWorkflowDispatch({
+              owner,
+              repo,
+              workflow_id: workflowId,
+              ref,
+              inputs: {
+                chunk_size: process.env.STAGE3_CHUNK_SIZE,
+                max_parallel: process.env.STAGE3_MAX_PARALLEL
+              }
+            });
+
+            let runId = null;
+            for (let attempt = 0; attempt < 36 && !runId; attempt++) {
+              await sleep(10000);
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: workflowId,
+                event: "workflow_dispatch",
+                branch: ref,
+                per_page: 20
+              });
+
+              const match = runs.data.workflow_runs.find(r => r.created_at >= dispatchTime);
+              if (match) {
+                runId = match.id;
+                core.info(`Found run ${runId} for ${workflowId}`);
+              }
+            }
+
+            if (!runId) {
+              core.setFailed(`Could not find dispatched run for ${workflowId}`);
+              return;
+            }
+
+            while (true) {
+              await sleep(30000);
+              const run = await github.rest.actions.getWorkflowRun({
+                owner, repo, run_id: runId
+              });
+
+              core.info(`${workflowId}: status=${run.data.status}, conclusion=${run.data.conclusion}`);
+              if (run.data.status === "completed") {
+                core.summary
+                  .addHeading(`Completed: ${workflowId}`)
+                  .addRaw(`Run ID: ${runId}<br/>`)
+                  .addRaw(`Conclusion: ${run.data.conclusion}<br/>`)
+                  .write();
+                if (run.data.conclusion !== "success") {
+                  core.setFailed(`${workflowId} finished with conclusion=${run.data.conclusion}`);
+                }
+                break;
+              }
+            }
+
+      - name: Run Stage 4 single workflow
+        uses: actions/github-script@v8
+        env:
+          WORKFLOW_FILE: 1_04_dataprocess_stage4_single.yml
+          TARGET_REF: ${{ steps.ref.outputs.target_ref }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const workflowId = process.env.WORKFLOW_FILE;
+            const ref = process.env.TARGET_REF;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const dispatchTime = new Date().toISOString();
+
+            async function sleep(ms) {
+              return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            core.info(`Dispatching ${workflowId} on ref ${ref}`);
+            await github.rest.actions.createWorkflowDispatch({
+              owner, repo, workflow_id: workflowId, ref
+            });
+
+            let runId = null;
+            for (let attempt = 0; attempt < 36 && !runId; attempt++) {
+              await sleep(10000);
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: workflowId,
+                event: "workflow_dispatch",
+                branch: ref,
+                per_page: 20
+              });
+
+              const match = runs.data.workflow_runs.find(r => r.created_at >= dispatchTime);
+              if (match) {
+                runId = match.id;
+                core.info(`Found run ${runId} for ${workflowId}`);
+              }
+            }
+
+            if (!runId) {
+              core.setFailed(`Could not find dispatched run for ${workflowId}`);
+              return;
+            }
+
+            while (true) {
+              await sleep(20000);
+              const run = await github.rest.actions.getWorkflowRun({
+                owner, repo, run_id: runId
+              });
+
+              core.info(`${workflowId}: status=${run.data.status}, conclusion=${run.data.conclusion}`);
+              if (run.data.status === "completed") {
+                core.summary
+                  .addHeading(`Completed: ${workflowId}`)
+                  .addRaw(`Run ID: ${runId}<br/>`)
+                  .addRaw(`Conclusion: ${run.data.conclusion}<br/>`)
+                  .write();
+                if (run.data.conclusion !== "success") {
+                  core.setFailed(`${workflowId} finished with conclusion=${run.data.conclusion}`);
+                }
+                break;
+              }
+            }
+
+      - name: Run MainDataset builder single workflow
+        uses: actions/github-script@v8
+        env:
+          WORKFLOW_FILE: 1_05_dataprocess_build_maindataset_single.yml
+          TARGET_REF: ${{ steps.ref.outputs.target_ref }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const workflowId = process.env.WORKFLOW_FILE;
+            const ref = process.env.TARGET_REF;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const dispatchTime = new Date().toISOString();
+
+            async function sleep(ms) {
+              return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            core.info(`Dispatching ${workflowId} on ref ${ref}`);
+            await github.rest.actions.createWorkflowDispatch({
+              owner, repo, workflow_id: workflowId, ref
+            });
+
+            let runId = null;
+            for (let attempt = 0; attempt < 36 && !runId; attempt++) {
+              await sleep(10000);
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: workflowId,
+                event: "workflow_dispatch",
+                branch: ref,
+                per_page: 20
+              });
+
+              const match = runs.data.workflow_runs.find(r => r.created_at >= dispatchTime);
+              if (match) {
+                runId = match.id;
+                core.info(`Found run ${runId} for ${workflowId}`);
+              }
+            }
+
+            if (!runId) {
+              core.setFailed(`Could not find dispatched run for ${workflowId}`);
+              return;
+            }
+
+            while (true) {
+              await sleep(20000);
+              const run = await github.rest.actions.getWorkflowRun({
+                owner, repo, run_id: runId
+              });
+
+              core.info(`${workflowId}: status=${run.data.status}, conclusion=${run.data.conclusion}`);
+              if (run.data.status === "completed") {
+                core.summary
+                  .addHeading(`Completed: ${workflowId}`)
+                  .addRaw(`Run ID: ${runId}<br/>`)
+                  .addRaw(`Conclusion: ${run.data.conclusion}<br/>`)
+                  .write();
+                if (run.data.conclusion !== "success") {
+                  core.setFailed(`${workflowId} finished with conclusion=${run.data.conclusion}`);
+                }
+                break;
+              }
+            }
+
+      - name: Pipeline orchestration completed
+        shell: bash
+        run: |
+          echo "All requested data-processing workflows completed successfully."
