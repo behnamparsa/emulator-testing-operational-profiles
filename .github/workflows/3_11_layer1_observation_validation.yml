@@ -1,0 +1,33 @@
+name: Layer 1 Observation Validation
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_tag:
+        required: false
+        default: ''
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run Layer 1 validation
+        env:
+          SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
+        run: python scripts/run_layer1_validation.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add outputs/catalog/observation_qa_catalog_validated.csv
+          git diff --cached --quiet || git commit -m "Layer 1 observation validation"
+          git pull --rebase origin main || true
+          git push origin HEAD:main || true
