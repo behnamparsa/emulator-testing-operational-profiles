@@ -240,11 +240,10 @@ def _extract_pdf_text(pdf_path: Path) -> str:
     texts: List[str] = []
     for page in reader.pages:
         texts.append(page.extract_text() or '')
-    text = '
-'.join(texts)
-    text = text.replace('­', '')
-    text = re.sub(r'', '
-', text)
+    text = '\n'.join(texts)
+    text = text.replace('\u00ad', '')
+    text = re.sub(r'\r', '\n', text)
+    return text
     return text
 
 
