@@ -453,15 +453,13 @@ def stage1_confirmed_called_signal(row: Dict[str, str]) -> bool:
 
 
 def row_is_instru_executed(row: Dict[str, str]) -> bool:
-    # V20 authoritative executed-subset gate from Stage 2 per-style inventory.
-    for key in ["style_instru_job_count", "instru_job_count"]:
-        v = norm(row.get(key))
-        try:
-            if v != "" and int(float(v)) > 0:
-                return True
-        except Exception:
-            pass
-    return False
+    # V20 authoritative Stage 3 gate:
+    # keep only per-style rows where style_instru_job_count > 0
+    v = norm(row.get("style_instru_job_count"))
+    try:
+        return v != "" and int(float(v)) > 0
+    except Exception:
+        return False
 
 # =========================
 # Workflow YAML extraction
@@ -1347,23 +1345,9 @@ def compute_style_metrics_for_run(row: Dict[str, str], step_rows: List[Dict[str,
 
 
 def style_has_executed_instru(payload: Dict[str, object]) -> bool:
-    """
-    Stage 3 authoritative executed-subset gate.
-    Treat a style as executed only when we can identify an instrumentation path,
-    i.e. at least an anchor and an execution window signal.
-    """
-    for k in [
-        "instru_duration_seconds",
-        "core_instru_window_seconds",
-        "instru_exec_window_seconds",
-        "time_to_first_instru_from_run_seconds",
-        "anchor_selected_seconds",
-        "exec_end_selected_seconds",
-    ]:
-        v = payload.get(k, "")
-        if v not in ("", None):
-            return True
-    return False
+    # Stage 3 trusts the Stage 2 per-style executed gate (style_instru_job_count > 0).
+    # Do not re-filter styles here.
+    return True
 
 
 
@@ -1523,10 +1507,14 @@ def main() -> None:
     total_rows_after_exec_filter = len(style_rows)
 
     if total_rows_after_exec_filter == 0:
-        raise RuntimeError(
-            "Stage 3 executed-run filter removed all rows. "
-            "Check that run_inventory_per_style.csv contains style_instru_job_count and that it is populated correctly."
-        )
+        write_csv(OUT_STAGE3B_STEPS_CSV, OUT_FIELDNAMES_3B, [])
+        write_csv(OUT_STAGE3A_RUNS_CSV, OUT_FIELDNAMES_3A, [])
+        write_csv(OUT_STAGE3C_RUN_PER_STYLE_CSV, PER_STYLE_FIELDS, [])
+        print("[info] Stage 3 input rows before any filter:", total_rows_before_filter)
+        print("[info] Stage 3 rows after run_id/style filter:", total_rows_after_runid_filter)
+        print("[info] Stage 3 rows after executed-run filter (style_instru_job_count > 0):", total_rows_after_exec_filter)
+        print("[done] No executed rows in this shard after Stage 3 filtering; wrote header-only outputs.")
+        return
 
     run_index: Dict[str, Dict[str, str]] = {}
     for r in run_rows:
@@ -1546,6 +1534,13 @@ def main() -> None:
         "Third-Party": "third_party",
     }
 
+    style_rows = sorted(
+        style_rows,
+        key=lambda r: (
+            norm(r.get("run_id") or r.get("workflow_run_id")),
+            normalize_style_label(r.get("target_style")),
+        ),
+    )
     iterator = tqdm(style_rows, desc="Stage3 V18") if tqdm else style_rows
 
     current_run_id = None

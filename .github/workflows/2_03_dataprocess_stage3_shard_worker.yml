@@ -1,6 +1,5 @@
 name: Stage 3 - Shard Worker
 
-
 on:
   workflow_call:
     inputs:
