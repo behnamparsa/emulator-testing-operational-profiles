@@ -72,19 +72,51 @@ jobs:
         run: |
           python -m pipeline.stage3_run_telemetry
 
+      - name: Gzip shard step-level output
+        run: |
+          test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv"
+          python - <<'PY'
+          import gzip
+          import shutil
+          from pathlib import Path
+
+          src = Path("${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv")
+          dst = src.with_suffix(src.suffix + '.gz')
+
+          with src.open('rb') as f_in, gzip.open(dst, 'wb', compresslevel=6) as f_out:
+              shutil.copyfileobj(f_in, f_out)
+
+          src.unlink()
+
+          print(f'Created {dst}')
+          print(f'gzip size bytes: {dst.stat().st_size}')
+          PY
+
       - name: Inspect Stage 3 outputs
         if: always()
         run: |
           echo "run_metrics lines:"
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_metrics_v16_stage3_enhanced.csv" || true
-          echo "run_steps lines:"
-          wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv" || true
+          echo "run_steps gzip size (bytes):"
+          stat -c %s "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv.gz" || true
           echo "run_per_style lines:"
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv" || true
           echo "run_metrics preview:"
           sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_metrics_v16_stage3_enhanced.csv" || true
-          echo "run_steps preview:"
-          sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv" || true
+          echo "run_steps gzip preview:"
+          python - <<'PY'
+          import gzip
+          from itertools import islice
+          from pathlib import Path
+
+          path = Path("${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv.gz")
+          if path.exists():
+              with gzip.open(path, 'rt', encoding='utf-8', errors='replace') as f:
+                  for line in islice(f, 10):
+                      print(line.rstrip())
+          else:
+              print('gzip file missing')
+          PY
           echo "run_per_style preview:"
           sed -n '1,10p' "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv" || true
           echo "Shard folder contents:"
@@ -93,7 +125,7 @@ jobs:
       - name: Validate Stage 3 outputs exist
         run: |
           test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_metrics_v16_stage3_enhanced.csv"
-          test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv"
+          test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv.gz"
           test -f "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv"
 
       - name: Upload Stage 3 shard outputs
@@ -102,6 +134,6 @@ jobs:
           name: stage3-shard-${{ inputs.shard_id }}
           path: |
             ${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_metrics_v16_stage3_enhanced.csv
-            ${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv
+            ${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_steps_v16_stage3_breakdown.csv.gz
             ${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_per_style_v1_stage3.csv
           if-no-files-found: error

@@ -206,7 +206,7 @@ jobs:
 
           find data/processed/stage3_shards_downloaded -mindepth 1 -maxdepth 1 -type d | while read -r d; do
             test -f "$d/run_metrics_v16_stage3_enhanced.csv"
-            test -f "$d/run_steps_v16_stage3_breakdown.csv"
+            test -f "$d/run_steps_v16_stage3_breakdown.csv.gz"
             test -f "$d/run_per_style_v1_stage3.csv"
           done
 
@@ -224,20 +224,51 @@ jobs:
           echo "run_metrics preview:"
           sed -n '1,10p' data/processed/run_metrics_v16_stage3_enhanced.csv || true
 
-      - name: Aggregate run_steps_v16_stage3_breakdown.csv
+      - name: Aggregate and gzip run_steps_v16_stage3_breakdown.csv
         run: |
           rm -f data/processed/run_steps_v16_stage3_breakdown.csv
-          python scripts/aggregate_selected_results.py             --input-dir data/processed/stage3_shards_downloaded             --output-dir data/processed             --file run_steps_v16_stage3_breakdown.csv
+          rm -f data/processed/run_steps_v16_stage3_breakdown.csv.gz
+          python - <<'PY'
+          import gzip
+          import shutil
+          from pathlib import Path
+          import subprocess
+          import sys
 
-      - name: Inspect aggregated run_steps
+          subprocess.run([
+              sys.executable,
+              'scripts/aggregate_selected_results.py',
+              '--input-dir', 'data/processed/stage3_shards_downloaded',
+              '--output-dir', 'data/processed',
+              '--file', 'run_steps_v16_stage3_breakdown.csv.gz',
+          ], check=True)
+
+          src = Path('data/processed/run_steps_v16_stage3_breakdown.csv.gz')
+          if not src.exists():
+              raise RuntimeError('Expected aggregated gzip step output was not created')
+          print(f'Aggregated gzip created at {src}')
+          print(f'Gzip size bytes: {src.stat().st_size}')
+          PY
+
+      - name: Inspect aggregated gzip run_steps
         if: always()
         run: |
-          echo "run_steps lines:"
-          wc -l data/processed/run_steps_v16_stage3_breakdown.csv || true
-          echo "run_steps preview:"
-          sed -n '1,10p' data/processed/run_steps_v16_stage3_breakdown.csv || true
-          echo "run_steps size (bytes):"
-          stat -c %s data/processed/run_steps_v16_stage3_breakdown.csv || true
+          echo "run_steps gzip size (bytes):"
+          stat -c %s data/processed/run_steps_v16_stage3_breakdown.csv.gz || true
+          echo "run_steps gzip preview:"
+          python - <<'PY'
+          import gzip
+          from itertools import islice
+          from pathlib import Path
+
+          path = Path('data/processed/run_steps_v16_stage3_breakdown.csv.gz')
+          if path.exists():
+              with gzip.open(path, 'rt', encoding='utf-8', errors='replace') as f:
+                  for line in islice(f, 10):
+                      print(line.rstrip())
+          else:
+              print('gzip file missing')
+          PY
 
       - name: Aggregate run_per_style_v1_stage3.csv
         run: |
@@ -255,7 +286,7 @@ jobs:
       - name: Validate Stage 3 outputs exist
         run: |
           test -f data/processed/run_metrics_v16_stage3_enhanced.csv
-          test -f data/processed/run_steps_v16_stage3_breakdown.csv
+          test -f data/processed/run_steps_v16_stage3_breakdown.csv.gz
           test -f data/processed/run_per_style_v1_stage3.csv
 
       - name: Commit Stage 3 summary outputs only
@@ -273,18 +304,25 @@ jobs:
 
           git commit -m "Stage 3 manager: telemetry summary outputs"
 
+          pushed=0
           for i in 1 2 3; do
             echo "Push attempt ${i}"
-            git pull --rebase origin main && git push origin HEAD:main && break
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              pushed=1
+              break
+            fi
             echo "Push attempt ${i} failed; retrying after 10s..."
             sleep 10
           done
 
-      - name: Upload Stage 3 artifact
+          test "${pushed}" = "1"
+
+      - name: Upload Stage 3 artifacts
         uses: actions/upload-artifact@v7
         with:
           name: stage3
           path: |
             data/processed/run_metrics_v16_stage3_enhanced.csv
-            data/processed/run_steps_v16_stage3_breakdown.csv
+            data/processed/run_steps_v16_stage3_breakdown.csv.gz
             data/processed/run_per_style_v1_stage3.csv
+          if-no-files-found: error
