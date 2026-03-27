@@ -8,6 +8,7 @@ env:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   stage4:
@@ -31,12 +32,45 @@ jobs:
       - name: Prepare processed folder
         run: |
           mkdir -p data/processed
+          mkdir -p data/processed/stage3_artifact_download
+
+      - name: Download latest Stage 3 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download \
+            --repo "${{ github.repository }}" \
+            --name stage3 \
+            --dir data/processed/stage3_artifact_download
+
+      - name: Restore Stage 3 step telemetry from artifact
+        run: |
+          test -f data/processed/stage3_artifact_download/run_steps_v16_stage3_breakdown.zip
+          cp data/processed/stage3_artifact_download/run_steps_v16_stage3_breakdown.zip \
+             data/processed/run_steps_v16_stage3_breakdown.zip
+
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          zip_path = Path("data/processed/run_steps_v16_stage3_breakdown.zip")
+          out_dir = Path("data/processed")
+
+          with zipfile.ZipFile(zip_path, "r") as zf:
+              zf.extractall(out_dir)
+
+          csv_path = out_dir / "run_steps_v16_stage3_breakdown.csv"
+          if not csv_path.exists():
+              raise RuntimeError("run_steps_v16_stage3_breakdown.csv was not extracted from Stage 3 artifact")
+
+          print(csv_path)
+          PY
 
       - name: Validate Stage 3 inputs exist
         run: |
+          ls -lah data/processed || true
           test -f data/processed/run_metrics_v16_stage3_enhanced.csv
           test -f data/processed/run_steps_v16_stage3_breakdown.csv
-          test -f data/processed/run_per_style_v1_stage3.csv
 
       - name: Run Stage 4
         env:
