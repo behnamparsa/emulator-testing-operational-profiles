@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       shard_matrix: ${{ steps.build.outputs.shard_matrix }}
+      shard_count: ${{ steps.build.outputs.shard_count }}
 
     steps:
       - name: Check out repository
@@ -52,13 +53,65 @@ jobs:
           echo "run_inventory_per_style preview:"
           sed -n '1,10p' data/processed/run_inventory_per_style.csv || true
 
+      - name: Filter Stage 3 driver rows to executed styles only
+        run: |
+          mkdir -p data/processed/stage3_inputs
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+
+          src = Path('data/processed/run_inventory_per_style.csv')
+          dst = Path('data/processed/stage3_inputs/run_inventory_per_style.executed_only.csv')
+
+          with src.open('r', encoding='utf-8', errors='ignore', newline='') as f:
+              reader = csv.DictReader(f)
+              fieldnames = reader.fieldnames or []
+              rows = [dict(r) for r in reader]
+
+          if not fieldnames:
+              raise RuntimeError('run_inventory_per_style.csv is missing headers')
+          if 'style_instru_job_count' not in fieldnames:
+              raise RuntimeError('run_inventory_per_style.csv is missing style_instru_job_count')
+
+          def as_int(v):
+              try:
+                  return int(str(v).strip())
+              except Exception:
+                  return 0
+
+          kept = [r for r in rows if as_int(r.get('style_instru_job_count')) > 0]
+
+          with dst.open('w', encoding='utf-8', newline='') as f:
+              writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+              writer.writeheader()
+              for row in kept:
+                  writer.writerow(row)
+
+          print(f'total_rows={len(rows)}')
+          print(f'kept_rows={len(kept)}')
+          print(f'filtered_file={dst}')
+
+          if not kept:
+              raise RuntimeError(
+                  'After filtering run_inventory_per_style.csv on style_instru_job_count > 0, '
+                  'no Stage 3 executable rows remain.'
+              )
+          PY
+
+      - name: Show filtered Stage 3 driver preview
+        run: |
+          echo "Filtered run_inventory_per_style lines:"
+          wc -l data/processed/stage3_inputs/run_inventory_per_style.executed_only.csv || true
+          echo "Filtered run_inventory_per_style preview:"
+          sed -n '1,10p' data/processed/stage3_inputs/run_inventory_per_style.executed_only.csv || true
+
       - name: Prepare Stage 3 shards
         run: |
           rm -rf data/processed/stage3_shards
           mkdir -p data/processed/stage3_shards
           python scripts/prepare_stage3_shards.py \
             --run-inventory data/processed/run_inventory.csv \
-            --run-per-style data/processed/run_inventory_per_style.csv \
+            --run-per-style data/processed/stage3_inputs/run_inventory_per_style.executed_only.csv \
             --chunk-size "${{ inputs.chunk_size }}" \
             --out-dir data/processed/stage3_shards
 
@@ -87,8 +140,9 @@ jobs:
 
           print(matrix)
 
-          with open(os.environ["GITHUB_OUTPUT"], 'a', encoding='utf-8') as fh:
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f"shard_matrix={json.dumps(matrix)}\n")
+              fh.write(f"shard_count={len(shards)}\n")
           PY
 
   run-stage3-shards:
@@ -105,7 +159,9 @@ jobs:
     secrets: inherit
 
   aggregate-stage3:
-    needs: run-stage3-shards
+    needs:
+      - prepare-stage3-shards
+      - run-stage3-shards
     if: ${{ needs.run-stage3-shards.result == 'success' }}
     runs-on: ubuntu-latest
 
@@ -136,9 +192,21 @@ jobs:
           echo "Downloaded directory tree:"
           find data/processed/stage3_shards_downloaded -maxdepth 5 -print || true
 
-      - name: Fail clearly if no Stage 3 shard artifacts were downloaded
+      - name: Validate Stage 3 shard downloads are complete
+        env:
+          EXPECTED_SHARDS: ${{ needs.prepare-stage3-shards.outputs.shard_count }}
         run: |
-          find data/processed/stage3_shards_downloaded -mindepth 1 -maxdepth 1 -type d | grep . >/dev/null
+          test -d data/processed/stage3_shards_downloaded
+          actual=$(find data/processed/stage3_shards_downloaded -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+          echo "Expected shard artifacts: ${EXPECTED_SHARDS}"
+          echo "Actual downloaded shard artifact dirs: ${actual}"
+          test "${actual}" = "${EXPECTED_SHARDS}"
+
+          find data/processed/stage3_shards_downloaded -mindepth 1 -maxdepth 1 -type d | while read -r d; do
+            test -f "$d/run_metrics_v16_stage3_enhanced.csv"
+            test -f "$d/run_steps_v16_stage3_breakdown.csv"
+            test -f "$d/run_per_style_v1_stage3.csv"
+          done
 
       - name: Aggregate run_metrics_v16_stage3_enhanced.csv
         run: |
