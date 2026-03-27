@@ -19,6 +19,10 @@ permissions:
   contents: write
   actions: read
 
+concurrency:
+  group: data-processed-writer
+  cancel-in-progress: false
+
 jobs:
   prepare-stage3-shards:
     runs-on: ubuntu-latest
@@ -109,11 +113,7 @@ jobs:
         run: |
           rm -rf data/processed/stage3_shards
           mkdir -p data/processed/stage3_shards
-          python scripts/prepare_stage3_shards.py \
-            --run-inventory data/processed/run_inventory.csv \
-            --run-per-style data/processed/stage3_inputs/run_inventory_per_style.executed_only.csv \
-            --chunk-size "${{ inputs.chunk_size }}" \
-            --out-dir data/processed/stage3_shards
+          python scripts/prepare_stage3_shards.py             --run-inventory data/processed/run_inventory.csv             --run-per-style data/processed/stage3_inputs/run_inventory_per_style.executed_only.csv             --chunk-size "${{ inputs.chunk_size }}"             --out-dir data/processed/stage3_shards
 
       - name: Show prepared Stage 3 shards
         run: |
@@ -168,6 +168,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -212,10 +214,7 @@ jobs:
         run: |
           rm -f data/processed/run_metrics_v16_stage3_enhanced.csv
           mkdir -p data/processed
-          python scripts/aggregate_selected_results.py \
-            --input-dir data/processed/stage3_shards_downloaded \
-            --output-dir data/processed \
-            --file run_metrics_v16_stage3_enhanced.csv
+          python scripts/aggregate_selected_results.py             --input-dir data/processed/stage3_shards_downloaded             --output-dir data/processed             --file run_metrics_v16_stage3_enhanced.csv
 
       - name: Inspect aggregated run_metrics
         if: always()
@@ -228,10 +227,7 @@ jobs:
       - name: Aggregate run_steps_v16_stage3_breakdown.csv
         run: |
           rm -f data/processed/run_steps_v16_stage3_breakdown.csv
-          python scripts/aggregate_selected_results.py \
-            --input-dir data/processed/stage3_shards_downloaded \
-            --output-dir data/processed \
-            --file run_steps_v16_stage3_breakdown.csv
+          python scripts/aggregate_selected_results.py             --input-dir data/processed/stage3_shards_downloaded             --output-dir data/processed             --file run_steps_v16_stage3_breakdown.csv
 
       - name: Inspect aggregated run_steps
         if: always()
@@ -240,14 +236,13 @@ jobs:
           wc -l data/processed/run_steps_v16_stage3_breakdown.csv || true
           echo "run_steps preview:"
           sed -n '1,10p' data/processed/run_steps_v16_stage3_breakdown.csv || true
+          echo "run_steps size (bytes):"
+          stat -c %s data/processed/run_steps_v16_stage3_breakdown.csv || true
 
       - name: Aggregate run_per_style_v1_stage3.csv
         run: |
           rm -f data/processed/run_per_style_v1_stage3.csv
-          python scripts/aggregate_selected_results.py \
-            --input-dir data/processed/stage3_shards_downloaded \
-            --output-dir data/processed \
-            --file run_per_style_v1_stage3.csv
+          python scripts/aggregate_selected_results.py             --input-dir data/processed/stage3_shards_downloaded             --output-dir data/processed             --file run_per_style_v1_stage3.csv
 
       - name: Inspect aggregated run_per_style
         if: always()
@@ -263,17 +258,27 @@ jobs:
           test -f data/processed/run_steps_v16_stage3_breakdown.csv
           test -f data/processed/run_per_style_v1_stage3.csv
 
-      - name: Commit Stage 3 outputs
+      - name: Commit Stage 3 summary outputs only
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/processed/run_metrics_v16_stage3_enhanced.csv \
-                  data/processed/run_steps_v16_stage3_breakdown.csv \
-                  data/processed/run_per_style_v1_stage3.csv
-          git diff --cached --quiet || git commit -m "Stage 3 manager: telemetry outputs"
-          git push
+          git add data/processed/run_metrics_v16_stage3_enhanced.csv                   data/processed/run_per_style_v1_stage3.csv
+
+          if git diff --cached --quiet; then
+            echo "No summary-output changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Stage 3 manager: telemetry summary outputs"
+
+          for i in 1 2 3; do
+            echo "Push attempt ${i}"
+            git pull --rebase origin main && git push origin HEAD:main && break
+            echo "Push attempt ${i} failed; retrying after 10s..."
+            sleep 10
+          done
 
       - name: Upload Stage 3 artifact
         uses: actions/upload-artifact@v7

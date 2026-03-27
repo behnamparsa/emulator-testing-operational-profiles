@@ -44,12 +44,13 @@ jobs:
 
       - name: Prepare Stage 3 shard root
         run: |
+          test -f "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory.csv"
+          test -f "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory_per_style.csv"
+
           rm -rf "${{ inputs.shard_root }}/${{ inputs.shard_id }}"
           mkdir -p "${{ inputs.shard_root }}/${{ inputs.shard_id }}"
-          cp "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory.csv" \
-             "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv"
-          cp "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory_per_style.csv" \
-             "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv"
+          cp "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory.csv"              "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory.csv"
+          cp "stage3-shard-definitions/${{ inputs.shard_id }}/run_inventory_per_style.csv"              "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv"
 
           echo "Stage 3 driver lines:"
           wc -l "${{ inputs.shard_root }}/${{ inputs.shard_id }}/run_inventory_per_style.csv" || true
