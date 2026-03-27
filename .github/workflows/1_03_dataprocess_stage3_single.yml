@@ -8,6 +8,7 @@ env:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: data-processed-writer
@@ -42,6 +43,71 @@ jobs:
         run: |
           test -f data/processed/run_inventory.csv
           test -f data/processed/run_inventory_per_style.csv
+          echo "run_inventory lines:"
+          wc -l data/processed/run_inventory.csv || true
+          echo "run_inventory_per_style lines:"
+          wc -l data/processed/run_inventory_per_style.csv || true
+          echo "run_inventory preview:"
+          sed -n '1,10p' data/processed/run_inventory.csv || true
+          echo "run_inventory_per_style preview:"
+          sed -n '1,10p' data/processed/run_inventory_per_style.csv || true
+
+      - name: Filter Stage 3 driver rows to executed styles only
+        run: |
+          mkdir -p data/processed/stage3_inputs
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+
+          src = Path('data/processed/run_inventory_per_style.csv')
+          dst = Path('data/processed/stage3_inputs/run_inventory_per_style.executed_only.csv')
+
+          with src.open('r', encoding='utf-8', errors='ignore', newline='') as f:
+              reader = csv.DictReader(f)
+              fieldnames = reader.fieldnames or []
+              rows = [dict(r) for r in reader]
+
+          if not fieldnames:
+              raise RuntimeError('run_inventory_per_style.csv is missing headers')
+          if 'style_instru_job_count' not in fieldnames:
+              raise RuntimeError('run_inventory_per_style.csv is missing style_instru_job_count')
+
+          def as_int(v):
+              try:
+                  return int(str(v).strip())
+              except Exception:
+                  return 0
+
+          kept = [r for r in rows if as_int(r.get('style_instru_job_count')) > 0]
+
+          with dst.open('w', encoding='utf-8', newline='') as f:
+              writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+              writer.writeheader()
+              for row in kept:
+                  writer.writerow(row)
+
+          print(f'total_rows={len(rows)}')
+          print(f'kept_rows={len(kept)}')
+          print(f'filtered_file={dst}')
+
+          if not kept:
+              raise RuntimeError(
+                  'After filtering run_inventory_per_style.csv on style_instru_job_count > 0, '
+                  'no Stage 3 executable rows remain.'
+              )
+          PY
+
+      - name: Show filtered Stage 3 driver preview
+        run: |
+          echo "Filtered run_inventory_per_style lines:"
+          wc -l data/processed/stage3_inputs/run_inventory_per_style.executed_only.csv || true
+          echo "Filtered run_inventory_per_style preview:"
+          sed -n '1,10p' data/processed/stage3_inputs/run_inventory_per_style.executed_only.csv || true
+
+      - name: Prepare single-run Stage 3 root
+        run: |
+          cp data/processed/stage3_inputs/run_inventory_per_style.executed_only.csv \
+             data/processed/run_inventory_per_style.executed_only.csv
 
       - name: Run Stage 3
         env:
@@ -54,26 +120,25 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           ROOT_DIR: ${{ github.workspace }}/data/processed
         run: |
+          cp data/processed/run_inventory_per_style.executed_only.csv data/processed/run_inventory_per_style.csv
           python -m pipeline.stage3_run_telemetry
 
-      - name: Gzip step-level output
+      - name: Zip step-level output
         run: |
           test -f data/processed/run_steps_v16_stage3_breakdown.csv
+          rm -f data/processed/run_steps_v16_stage3_breakdown.zip
           python - <<'PY'
-          import gzip
-          import shutil
+          import zipfile
           from pathlib import Path
 
-          src = Path("data/processed/run_steps_v16_stage3_breakdown.csv")
-          dst = Path("data/processed/run_steps_v16_stage3_breakdown.csv.gz")
+          csv_path = Path("data/processed/run_steps_v16_stage3_breakdown.csv")
+          zip_path = Path("data/processed/run_steps_v16_stage3_breakdown.zip")
 
-          with src.open("rb") as f_in, gzip.open(dst, "wb", compresslevel=6) as f_out:
-              shutil.copyfileobj(f_in, f_out)
+          with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+              zf.write(csv_path, arcname=csv_path.name)
 
-          src.unlink()
-
-          print(f"Created: {dst}")
-          print(f"Gzip size bytes: {dst.stat().st_size}")
+          print(f"Created: {zip_path}")
+          print(f"Zip size bytes: {zip_path.stat().st_size}")
           PY
 
       - name: Inspect Stage 3 outputs
@@ -81,33 +146,24 @@ jobs:
         run: |
           echo "run_metrics lines:"
           wc -l data/processed/run_metrics_v16_stage3_enhanced.csv || true
-          echo "run_steps gzip size (bytes):"
-          stat -c %s data/processed/run_steps_v16_stage3_breakdown.csv.gz || true
+          echo "run_steps csv lines:"
+          wc -l data/processed/run_steps_v16_stage3_breakdown.csv || true
+          echo "run_steps zip size (bytes):"
+          stat -c %s data/processed/run_steps_v16_stage3_breakdown.zip || true
           echo "run_per_style lines:"
           wc -l data/processed/run_per_style_v1_stage3.csv || true
           echo "run_metrics preview:"
           sed -n '1,10p' data/processed/run_metrics_v16_stage3_enhanced.csv || true
-          echo "run_steps gzip preview:"
-          python - <<'PY'
-          import gzip
-          from itertools import islice
-          from pathlib import Path
-
-          path = Path("data/processed/run_steps_v16_stage3_breakdown.csv.gz")
-          if path.exists():
-              with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
-                  for line in islice(f, 10):
-                      print(line.rstrip())
-          else:
-              print("gzip file missing")
-          PY
+          echo "run_steps csv preview:"
+          sed -n '1,10p' data/processed/run_steps_v16_stage3_breakdown.csv || true
           echo "run_per_style preview:"
           sed -n '1,10p' data/processed/run_per_style_v1_stage3.csv || true
 
       - name: Validate Stage 3 outputs exist
         run: |
           test -f data/processed/run_metrics_v16_stage3_enhanced.csv
-          test -f data/processed/run_steps_v16_stage3_breakdown.csv.gz
+          test -f data/processed/run_steps_v16_stage3_breakdown.csv
+          test -f data/processed/run_steps_v16_stage3_breakdown.zip
           test -f data/processed/run_per_style_v1_stage3.csv
 
       - name: Commit Stage 3 summary outputs only
@@ -146,6 +202,6 @@ jobs:
           name: stage3
           path: |
             data/processed/run_metrics_v16_stage3_enhanced.csv
-            data/processed/run_steps_v16_stage3_breakdown.csv.gz
+            data/processed/run_steps_v16_stage3_breakdown.zip
             data/processed/run_per_style_v1_stage3.csv
           if-no-files-found: error
