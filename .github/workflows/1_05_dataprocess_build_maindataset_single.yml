@@ -1,4 +1,4 @@
-name: Build - Single-Run MainDataset
+name: Build MainDataset
 
 on:
   workflow_dispatch:
@@ -8,11 +8,12 @@ env:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   build-main-dataset:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
       - name: Check out repository
@@ -31,13 +32,46 @@ jobs:
       - name: Prepare processed folder
         run: |
           mkdir -p data/processed
+          mkdir -p data/processed/stage3_artifact_download
+          mkdir -p data/processed/stage4_artifact_download
+
+      - name: Download latest Stage 3 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download \
+            --repo "${{ github.repository }}" \
+            --name stage3 \
+            --dir data/processed/stage3_artifact_download || true
+
+      - name: Download latest Stage 4 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download \
+            --repo "${{ github.repository }}" \
+            --name stage4 \
+            --dir data/processed/stage4_artifact_download || true
+
+      - name: Restore builder inputs from artifacts when needed
+        run: |
+          if [ ! -f data/processed/run_per_style_v1_stage3.csv ] && [ -f data/processed/stage3_artifact_download/run_per_style_v1_stage3.csv ]; then
+            cp data/processed/stage3_artifact_download/run_per_style_v1_stage3.csv \
+               data/processed/run_per_style_v1_stage3.csv
+          fi
+
+          if [ ! -f data/processed/run_workload_signature_v3.csv ] && [ -f data/processed/stage4_artifact_download/run_workload_signature_v3.csv ]; then
+            cp data/processed/stage4_artifact_download/run_workload_signature_v3.csv \
+               data/processed/run_workload_signature_v3.csv
+          fi
 
       - name: Validate merged inputs exist
         run: |
-          test -f data/processed/run_inventory.csv
+          echo "Contents of data/processed:"
+          ls -lah data/processed || true
+
+          test -f data/processed/verified_workflows_v16.csv
           test -f data/processed/run_inventory_per_style.csv
-          test -f data/processed/run_metrics_v16_stage3_enhanced.csv
-          test -f data/processed/run_steps_v16_stage3_breakdown.csv
           test -f data/processed/run_per_style_v1_stage3.csv
           test -f data/processed/run_workload_signature_v3.csv
 
@@ -50,9 +84,9 @@ jobs:
       - name: Inspect MainDataset output
         if: always()
         run: |
-          echo "MainDataset rows:"
+          echo "MainDataset.csv lines:"
           wc -l data/processed/MainDataset.csv || true
-          echo "MainDataset preview:"
+          echo "MainDataset.csv preview:"
           sed -n '1,10p' data/processed/MainDataset.csv || true
 
       - name: Validate MainDataset output exists
@@ -66,11 +100,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/processed/MainDataset.csv
-          git diff --cached --quiet || git commit -m "Build manager: MainDataset.csv"
+          git diff --cached --quiet || git commit -m "Build MainDataset.csv"
           git push
 
       - name: Upload MainDataset artifact
         uses: actions/upload-artifact@v7
         with:
-          name: main-dataset
+          name: maindataset
           path: data/processed/MainDataset.csv
