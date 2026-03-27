@@ -184,3 +184,17 @@ This repository can automatically:
 - regenerate candidate profile and rule outputs
 
 But study-level interpretation should still remain governed by explicit review rules when needed.
+
+
+## First-time catalog bootstrap
+
+The first catalog bootstrap is sourced from the paper PDF committed in the repository:
+- `data/Source_Paper/Emulator_Testing_MSR_2026_Modified_RQ3B_Extension.pdf`
+
+The bootstrap workflow/script does **not** rely on a hand-maintained starter list as its primary source. Instead, it:
+1. reads the source paper PDF from `data/Source_Paper/`
+2. extracts the released observations (`Obs. 1.1` .. `Obs. 4.4`)
+3. maps them into the repository's question-answer catalog format
+4. writes `outputs/catalog/observation_qa_catalog.csv`
+
+After this one-time bootstrap, the generated catalog becomes the baseline that later Layer 1 and Layer 2 runs update with dated snapshot columns.

@@ -30,7 +30,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Build observation QA catalog
+      - name: Verify source paper exists
+        run: |
+          ls -l data/Source_Paper
+          test -f data/Source_Paper/Emulator_Testing_MSR_2026_Modified_RQ3B_Extension.pdf
+
+      - name: Build observation QA catalog from paper
         run: |
           PYTHONPATH=. python scripts/run_profile_catalog_bootstrap.py
 
@@ -48,7 +53,7 @@ jobs:
             exit 0
           fi
 
-          git commit -m "Bootstrap observation QA catalog"
+          git commit -m "Bootstrap observation QA catalog from source paper"
 
           pushed=0
           for i in 1 2 3; do

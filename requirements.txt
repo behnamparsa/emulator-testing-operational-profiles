@@ -4,3 +4,4 @@ requests
 scipy
 pyyaml
 jinja2
+pypdf
