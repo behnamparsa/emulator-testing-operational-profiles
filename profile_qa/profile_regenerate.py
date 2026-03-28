@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 import csv
 import json
 
@@ -16,39 +16,40 @@ def _latest_column(prefix: str, fieldnames: List[str]) -> str | None:
     return sorted(matches)[-1] if matches else None
 
 
-def _slug(text: str) -> str:
-    return (
-        text.lower()
-        .replace(" ", "_")
-        .replace("/", "_")
-        .replace("-", "_")
-        .replace("(", "")
-        .replace(")", "")
-        .replace(",", "")
-    )
+def _norm(text: str) -> str:
+    return (text or "").strip()
 
 
-def _group_rows(rows: List[Dict[str, str]]) -> Dict[str, List[Dict[str, str]]]:
-    grouped: Dict[str, List[Dict[str, str]]] = {}
-    for row in rows:
-        grouped.setdefault(row.get("rq_id", "RQ?"), []).append(row)
-    return grouped
+def _obs_number(row: Dict[str, str]) -> str:
+    val = _norm(row.get("obs_number", ""))
+    if val:
+        return val
+    obs_id = _norm(row.get("obs_id", ""))
+    return obs_id.replace("Obs. ", "").strip()
 
 
-def _lookup(rows: List[Dict[str, str]], obs_id: str) -> Dict[str, str] | None:
-    for row in rows:
-        if row.get("obs_id") == obs_id:
-            return row
-    return None
+def _obs_title(row: Dict[str, str]) -> str:
+    return _norm(row.get("obs_title", "")) or _norm(row.get("question", ""))
 
 
-def _style_cell(rows: List[Dict[str, str]], style: str, current_answers: Dict[str, str]) -> Dict[str, str]:
+def _rq_heading(row: Dict[str, str]) -> str:
+    rq_id = _norm(row.get("rq_id", ""))
+    rq_title = _norm(row.get("rq_title", ""))
+    if rq_id and rq_title:
+        return f"{rq_id} — {rq_title}"
+    if rq_id:
+        return rq_id
+    if rq_title:
+        return rq_title
+    return "Uncategorized"
+
+
+def _style_cell(style: str, current_answers: Dict[str, str]) -> Dict[str, str]:
     style_l = style.lower()
 
-    def ans(obs_id: str) -> str:
-        return current_answers.get(obs_id, "")
+    def ans(obs_id: str, fallback: str = "") -> str:
+        return _norm(current_answers.get(obs_id, "")) or fallback
 
-    # Speed profile
     if style_l == "community":
         speed_parts = []
         if ans("Obs. 1.1").lower() == "community":
@@ -62,6 +63,7 @@ def _style_cell(rows: List[Dict[str, str]], style: str, current_answers: Dict[st
         pred = "Fast but more variable than predictability-first alternatives"
         overhead = "Distributed overhead profile; optimize entry/setup and execution path before residual tail"
         verdict = "Generally usable with healthier success profile; mainly push-associated"
+
     elif style_l == "gmd":
         speed_parts = []
         if ans("Obs. 1.2").lower() == "gmd":
@@ -75,11 +77,13 @@ def _style_cell(rows: List[Dict[str, str]], style: str, current_answers: Dict[st
         pred = "Strongest predictability-first profile"
         overhead = "Execution-centric profile; first optimization target is the main execution path"
         verdict = "Most usable and success-oriented outcomes; mainly schedule-associated"
+
     elif style_l == "third-party":
         speed = "Slow sustained-execution profile with heavy entry burden"
         pred = "Strongest absolute tail-risk profile"
         overhead = "Heavy entry plus heavy execution; optimize provisioning delay and provider-side execution cost"
         verdict = "Usable verdicts common, but success strongly trigger-conditioned; mainly schedule-associated"
+
     else:  # Custom
         speed = "Mixed-speed case: early entry can be competitive, but completion tail is heavy"
         pred = "Mixed and cautious profile"
@@ -110,15 +114,15 @@ def _make_profile_table_md(table_rows: List[Dict[str, str]]) -> str:
 
 
 def _make_decision_support_guide_md(current_answers: Dict[str, str]) -> str:
-    predictable = current_answers.get("Obs. 2.1", "GMD") or "GMD"
-    fastest = current_answers.get("Obs. 1.1", "Community") or "Community"
-    fast_entry = current_answers.get("Obs. 1.2", "GMD") or "GMD"
-    usable = current_answers.get("Obs. 4.1", "GMD") or "GMD"
-    success = current_answers.get("Obs. 4.2", "GMD") or "GMD"
-    exec_centric = current_answers.get("Obs. 3.1", "GMD") or "GMD"
-    distributed = current_answers.get("Obs. 3.3", "Community") or "Community"
-    heavy_entry_exec = current_answers.get("Obs. 3.2", "Third-Party") or "Third-Party"
-    tail_heavy = current_answers.get("Obs. 3.4", "Custom") or "Custom"
+    predictable = _norm(current_answers.get("Obs. 2.1", "")) or "GMD"
+    fastest = _norm(current_answers.get("Obs. 1.1", "")) or "Community"
+    fast_entry = _norm(current_answers.get("Obs. 1.2", "")) or "GMD"
+    usable = _norm(current_answers.get("Obs. 4.1", "")) or "GMD"
+    success = _norm(current_answers.get("Obs. 4.2", "")) or "GMD"
+    exec_centric = _norm(current_answers.get("Obs. 3.1", "")) or "GMD"
+    distributed = _norm(current_answers.get("Obs. 3.3", "")) or "Community"
+    heavy_entry_exec = _norm(current_answers.get("Obs. 3.2", "")) or "Third-Party"
+    tail_heavy = _norm(current_answers.get("Obs. 3.4", "")) or "Custom"
 
     lines = [
         "# Decision-support guide (profile-derived)",
@@ -145,15 +149,15 @@ def _make_decision_support_guide_md(current_answers: Dict[str, str]) -> str:
 
 
 def _make_narrative_md(current_answers: Dict[str, str]) -> str:
-    fastest = current_answers.get("Obs. 1.1", "Community") or "Community"
-    fast_entry = current_answers.get("Obs. 1.2", "GMD") or "GMD"
-    slow_exec = current_answers.get("Obs. 1.3", "Third-Party") or "Third-Party"
-    predict = current_answers.get("Obs. 2.1", "GMD") or "GMD"
-    heavy_entry_exec = current_answers.get("Obs. 3.2", "Third-Party") or "Third-Party"
-    distributed = current_answers.get("Obs. 3.3", "Community") or "Community"
-    tail_heavy = current_answers.get("Obs. 3.4", "Custom") or "Custom"
-    usable = current_answers.get("Obs. 4.1", "GMD") or "GMD"
-    success = current_answers.get("Obs. 4.2", "GMD") or "GMD"
+    fastest = _norm(current_answers.get("Obs. 1.1", "")) or "Community"
+    fast_entry = _norm(current_answers.get("Obs. 1.2", "")) or "GMD"
+    slow_exec = _norm(current_answers.get("Obs. 1.3", "")) or "Third-Party"
+    predict = _norm(current_answers.get("Obs. 2.1", "")) or "GMD"
+    heavy_entry_exec = _norm(current_answers.get("Obs. 3.2", "")) or "Third-Party"
+    distributed = _norm(current_answers.get("Obs. 3.3", "")) or "Community"
+    tail_heavy = _norm(current_answers.get("Obs. 3.4", "")) or "Custom"
+    usable = _norm(current_answers.get("Obs. 4.1", "")) or "GMD"
+    success = _norm(current_answers.get("Obs. 4.2", "")) or "GMD"
 
     lines = [
         "# Operational performance profile summary (regenerated)",
@@ -189,8 +193,15 @@ def regenerate_from_catalog(
     latest_l2 = _latest_column("L2_answer_", fieldnames)
 
     for path in [
-        profile_md, profile_json, rules_md, rules_json, refresh_report_md,
-        profile_table_md, profile_table_csv, profile_narrative_md, decision_guide_md
+        profile_md,
+        profile_json,
+        rules_md,
+        rules_json,
+        refresh_report_md,
+        profile_table_md,
+        profile_table_csv,
+        profile_narrative_md,
+        decision_guide_md,
     ]:
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -203,26 +214,50 @@ def regenerate_from_catalog(
     report_lines = ["# Latest refresh report", ""]
 
     current_answers: Dict[str, str] = {}
+    current_rq_heading: str | None = None
+
     for row in rows:
-        question = row.get("question", "")
-        released_answer = row.get("released_answer", "")
-        l1_value = row.get(latest_l1, "") if latest_l1 else ""
-        l2_value = row.get(latest_l2, "") if latest_l2 else ""
+        question = _norm(row.get("question", ""))
+        released_answer = _norm(row.get("released_answer", ""))
+        l1_value = _norm(row.get(latest_l1, "")) if latest_l1 else ""
+        l2_value = _norm(row.get(latest_l2, "")) if latest_l2 else ""
         current_answer = l2_value or released_answer
-        current_answers[row.get("obs_id", "")] = current_answer
+
+        obs_id = _norm(row.get("obs_id", ""))
+        current_answers[obs_id] = current_answer
+
+        rq_heading = _rq_heading(row)
+        obs_number = _obs_number(row)
+        obs_title = _obs_title(row)
+
+        if rq_heading != current_rq_heading:
+            profile_lines.extend([
+                f"## {rq_heading}",
+                "",
+            ])
+            rules_lines.extend([
+                f"## {rq_heading}",
+                "",
+            ])
+            current_rq_heading = rq_heading
+
+        obs_heading = f"{obs_number} - {obs_title}" if obs_number and obs_title else obs_title or obs_id
 
         profile_lines.extend([
-            f"## {row.get('obs_id', '')} — {question}",
+            f"### {obs_heading}",
             "",
-            f"- Released answer: **{released_answer}**",
+            f"- Released answer: **{released_answer or 'N/A'}**",
             f"- Latest Layer 1 status: **{l1_value or 'N/A'}**",
             f"- Current answer: **{current_answer or 'N/A'}**",
             "",
         ])
 
         profile_data.append({
-            "rq_id": row.get("rq_id", ""),
-            "obs_id": row.get("obs_id", ""),
+            "rq_id": _norm(row.get("rq_id", "")),
+            "rq_title": _norm(row.get("rq_title", "")),
+            "obs_id": obs_id,
+            "obs_number": obs_number,
+            "obs_title": obs_title,
             "question": question,
             "released_answer": released_answer,
             "latest_layer1_status": l1_value,
@@ -230,21 +265,25 @@ def regenerate_from_catalog(
         })
 
         rules_lines.extend([
-            f"## {row.get('obs_id', '')}",
+            f"### {obs_heading}",
             "",
-            f"- Question: {question}",
+            f"- Question: {question or obs_title}",
             f"- Recommended current answer: **{current_answer or 'N/A'}**",
             "",
         ])
 
         rules_data.append({
-            "obs_id": row.get("obs_id", ""),
+            "rq_id": _norm(row.get("rq_id", "")),
+            "rq_title": _norm(row.get("rq_title", "")),
+            "obs_id": obs_id,
+            "obs_number": obs_number,
+            "obs_title": obs_title,
             "question": question,
             "current_answer": current_answer,
         })
 
     styles = ["Community", "Custom", "GMD", "Third-Party"]
-    table_rows = [_style_cell(rows, style, current_answers) for style in styles]
+    table_rows = [_style_cell(style, current_answers) for style in styles]
 
     report_lines.extend([
         f"- Source catalog: `{refreshed_catalog_csv}`",
