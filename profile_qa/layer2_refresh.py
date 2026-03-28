@@ -8,7 +8,7 @@ from .io_utils import read_csv_rows, write_csv_rows, snapshot_tag
 
 try:
     from scipy.stats import kruskal
-except Exception:
+except Exception:  # pragma: no cover
     kruskal = None
 
 
@@ -47,10 +47,10 @@ def _first_attempt_subset(df: pd.DataFrame) -> pd.DataFrame:
 def _ensure_shares(df: pd.DataFrame) -> pd.DataFrame:
     tmp = df.copy()
     if "pre_invocation_share" not in tmp.columns or "execution_window_share" not in tmp.columns or "post_invocation_share" not in tmp.columns:
-        pre = _find_col(tmp, ["pre_invocation_seconds", "pre_invocation"])
-        exe = _find_col(tmp, ["invocation_execution_window_seconds", "execution_window_seconds", "invocation_execution_window"])
-        post = _find_col(tmp, ["post_invocation_seconds", "post_invocation"])
-        if pre and exe and post:
+        pre = _find_col(tmp, ["pre_invocation_share", "pre_invocation_seconds", "pre_invocation"])
+        exe = _find_col(tmp, ["execution_window_share", "invocation_execution_window_seconds", "execution_window_seconds", "invocation_execution_window"])
+        post = _find_col(tmp, ["post_invocation_share", "post_invocation_seconds", "post_invocation"])
+        if pre and exe and post and not {"pre_invocation_share", "execution_window_share", "post_invocation_share"}.issubset(tmp.columns):
             denom = (
                 pd.to_numeric(tmp[pre], errors="coerce").fillna(0)
                 + pd.to_numeric(tmp[exe], errors="coerce").fillna(0)
@@ -73,8 +73,8 @@ def _rank_styles_metric(df: pd.DataFrame, value_col: str, lower_is_better: bool 
     styles = list(med.index)
     if not styles:
         return "Conditional", "", f"No style medians for {value_col}."
-    first = styles[0]
-    second = styles[1] if len(styles) > 1 else ""
+    first = str(styles[0])
+    second = str(styles[1]) if len(styles) > 1 else ""
     note = f"Ranked by median {value_col} ({'lower' if lower_is_better else 'higher'} is better)."
     if kruskal is not None and len(styles) >= 2:
         samples = [tmp.loc[tmp["style"] == s, value_col].dropna().tolist() for s in styles if len(tmp.loc[tmp["style"] == s, value_col].dropna()) > 0]
@@ -98,7 +98,7 @@ def _rank_styles_predictability(df: pd.DataFrame, value_col: str) -> Tuple[str, 
         med = g[value_col].median()
         mad = (g[value_col] - med).abs().median()
         norm = float(mad / med) if med not in [0, 0.0] else float(mad)
-        scores[style] = norm
+        scores[str(style)] = norm
     if not scores:
         return "Conditional", "", f"No predictability scores for {value_col}."
     ordered = sorted(scores.items(), key=lambda kv: kv[1])
@@ -116,7 +116,7 @@ def _rank_styles_distributed_overhead(df: pd.DataFrame) -> Tuple[str, str, str]:
     for style, g in tmp.groupby("style"):
         means = g[["pre_invocation_share", "execution_window_share", "post_invocation_share"]].apply(pd.to_numeric, errors="coerce").mean()
         vals = [float(x) for x in means.fillna(0)]
-        rows.append((style, max(vals)))
+        rows.append((str(style), max(vals)))
     rows.sort(key=lambda x: x[1])
     first = rows[0][0] if rows else "Conditional"
     second = rows[1][0] if len(rows) > 1 else ""
@@ -133,7 +133,7 @@ def _rank_styles_heavy_entry_execution(df: pd.DataFrame) -> Tuple[str, str, str]
         pre = pd.to_numeric(g["pre_invocation_share"], errors="coerce").mean()
         exe = pd.to_numeric(g["execution_window_share"], errors="coerce").mean()
         post = pd.to_numeric(g["post_invocation_share"], errors="coerce").mean()
-        rows.append((style, float(pre + exe - post)))
+        rows.append((str(style), float(pre + exe - post)))
     rows.sort(key=lambda x: x[1], reverse=True)
     first = rows[0][0] if rows else "Conditional"
     second = rows[1][0] if len(rows) > 1 else ""
@@ -151,7 +151,7 @@ def _rank_trigger_conditioned(df: pd.DataFrame) -> Tuple[str, str, str]:
     for style, g in tmp.groupby("style"):
         by_event = g.groupby("event")["success_flag"].mean()
         if len(by_event) >= 2:
-            rows.append((style, float(by_event.max() - by_event.min())))
+            rows.append((str(style), float(by_event.max() - by_event.min())))
     rows.sort(key=lambda x: x[1], reverse=True)
     first = rows[0][0] if rows else "Conditional"
     second = rows[1][0] if len(rows) > 1 else ""
@@ -223,7 +223,6 @@ def _refresh_answer(obs_id: str, question: str, df: pd.DataFrame) -> tuple[str, 
             return "Yes", "", "Trigger/context differentiation retained as a style-level categorical pattern."
     if obs_id == "Obs. 4.4" or "trigger-conditioned" in q:
         return _rank_trigger_conditioned(df_rq4)
-
     return "Conditional", "", "Layer 2 has no implemented ranking rule for this observation yet."
 
 
