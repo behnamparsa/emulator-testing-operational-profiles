@@ -1,17 +1,104 @@
-# Operational Profiles
+# Operational profile (regenerated)
 
-## GMD
-- n: 267
-- Run median: 1215.0
-- TTFTS median: 56.0
-- Window median: 1152.0
-- Dominant component: instru_exec_window_seconds
-- First optimization target: Optimize test execution first
+## 1.1 — 
 
-## Third-Party
-- n: 294
-- Run median: 2112.5
-- TTFTS median: 465.5
-- Window median: 213.5
-- Dominant component: instru_exec_window_seconds
-- First optimization target: Optimize test execution first
+- Released answer: **Community**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 1.2 — 
+
+- Released answer: **GMD**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 1.3 — 
+
+- Released answer: **Third-Party**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 1.4 — 
+
+- Released answer: **Custom**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 1.5 — 
+
+- Released answer: **Community**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 2.1 — 
+
+- Released answer: **GMD**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 2.2 — 
+
+- Released answer: **Community**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 2.3 — 
+
+- Released answer: **Third-Party**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 2.4 — 
+
+- Released answer: **Custom**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 3.1 — 
+
+- Released answer: **GMD**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 3.2 — 
+
+- Released answer: **Third-Party**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 3.3 — 
+
+- Released answer: **Community**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 3.4 — 
+
+- Released answer: **Custom**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 4.1 — 
+
+- Released answer: **GMD**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 4.2 — 
+
+- Released answer: **GMD**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 4.3 — 
+
+- Released answer: **Community=push; GMD=schedule; Third-Party=schedule; Custom=pull_request**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
+## 4.4 — 
+
+- Released answer: **Third-Party and Custom**
+- Latest Layer 1 status: **Mixed**
+- Current answer: **Conditional**
+
