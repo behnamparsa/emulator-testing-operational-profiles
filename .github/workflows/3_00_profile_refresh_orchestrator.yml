@@ -12,10 +12,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: data-processed-writer
-  cancel-in-progress: false
-
 jobs:
   layer1:
     uses: ./.github/workflows/3_11_layer1_observation_validation.yml
