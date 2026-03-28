@@ -69,16 +69,13 @@ def _rank_styles_metric(df: pd.DataFrame, value_col: str, lower_is_better: bool 
     tmp = tmp.dropna(subset=[value_col, "style"])
     if tmp.empty:
         return "Conditional", "", f"No usable values for {value_col}."
-
     med = tmp.groupby("style")[value_col].median().sort_values(ascending=not lower_is_better)
     styles = list(med.index)
     if not styles:
         return "Conditional", "", f"No style medians for {value_col}."
-
     first = styles[0]
     second = styles[1] if len(styles) > 1 else ""
     note = f"Ranked by median {value_col} ({'lower' if lower_is_better else 'higher'} is better)."
-
     if kruskal is not None and len(styles) >= 2:
         samples = [tmp.loc[tmp["style"] == s, value_col].dropna().tolist() for s in styles if len(tmp.loc[tmp["style"] == s, value_col].dropna()) > 0]
         if len(samples) >= 2:
@@ -87,7 +84,6 @@ def _rank_styles_metric(df: pd.DataFrame, value_col: str, lower_is_better: bool 
                 note += f" Kruskal p={p:.3g}."
             except Exception:
                 pass
-
     return first, second, note
 
 
@@ -97,17 +93,14 @@ def _rank_styles_predictability(df: pd.DataFrame, value_col: str) -> Tuple[str, 
     tmp = tmp.dropna(subset=[value_col, "style"])
     if tmp.empty:
         return "Conditional", "", f"No usable values for {value_col}."
-
     scores = {}
     for style, g in tmp.groupby("style"):
         med = g[value_col].median()
         mad = (g[value_col] - med).abs().median()
         norm = float(mad / med) if med not in [0, 0.0] else float(mad)
         scores[style] = norm
-
     if not scores:
         return "Conditional", "", f"No predictability scores for {value_col}."
-
     ordered = sorted(scores.items(), key=lambda kv: kv[1])
     first = ordered[0][0]
     second = ordered[1][0] if len(ordered) > 1 else ""
@@ -119,13 +112,11 @@ def _rank_styles_distributed_overhead(df: pd.DataFrame) -> Tuple[str, str, str]:
     need = {"pre_invocation_share", "execution_window_share", "post_invocation_share", "style"}
     if not need.issubset(tmp.columns):
         return "Conditional", "", "Missing share columns for distributed-overhead ranking."
-
     rows = []
     for style, g in tmp.groupby("style"):
         means = g[["pre_invocation_share", "execution_window_share", "post_invocation_share"]].apply(pd.to_numeric, errors="coerce").mean()
         vals = [float(x) for x in means.fillna(0)]
         rows.append((style, max(vals)))
-
     rows.sort(key=lambda x: x[1])
     first = rows[0][0] if rows else "Conditional"
     second = rows[1][0] if len(rows) > 1 else ""
@@ -137,14 +128,12 @@ def _rank_styles_heavy_entry_execution(df: pd.DataFrame) -> Tuple[str, str, str]
     need = {"pre_invocation_share", "execution_window_share", "post_invocation_share", "style"}
     if not need.issubset(tmp.columns):
         return "Conditional", "", "Missing share columns for heavy-entry/execution ranking."
-
     rows = []
     for style, g in tmp.groupby("style"):
         pre = pd.to_numeric(g["pre_invocation_share"], errors="coerce").mean()
         exe = pd.to_numeric(g["execution_window_share"], errors="coerce").mean()
         post = pd.to_numeric(g["post_invocation_share"], errors="coerce").mean()
         rows.append((style, float(pre + exe - post)))
-
     rows.sort(key=lambda x: x[1], reverse=True)
     first = rows[0][0] if rows else "Conditional"
     second = rows[1][0] if len(rows) > 1 else ""
@@ -154,18 +143,15 @@ def _rank_styles_heavy_entry_execution(df: pd.DataFrame) -> Tuple[str, str, str]
 def _rank_trigger_conditioned(df: pd.DataFrame) -> Tuple[str, str, str]:
     if not {"style", "event", "run_conclusion"}.issubset(df.columns):
         return "Conditional", "", "Missing event/run_conclusion columns for trigger-conditioned ranking."
-
     tmp = df.copy()
     tmp["usable"] = tmp["run_conclusion"].isin(["success", "failure"])
     tmp = tmp[tmp["usable"]]
     tmp["success_flag"] = tmp["run_conclusion"].eq("success").astype(int)
-
     rows = []
     for style, g in tmp.groupby("style"):
         by_event = g.groupby("event")["success_flag"].mean()
         if len(by_event) >= 2:
             rows.append((style, float(by_event.max() - by_event.min())))
-
     rows.sort(key=lambda x: x[1], reverse=True)
     first = rows[0][0] if rows else "Conditional"
     second = rows[1][0] if len(rows) > 1 else ""
@@ -188,39 +174,31 @@ def _refresh_answer(obs_id: str, question: str, df: pd.DataFrame) -> tuple[str, 
     if obs_id == "Obs. 1.1" or "fastest overall operational profile" in q:
         if run_duration:
             return _rank_styles_metric(df_base, run_duration, lower_is_better=True)
-
     if obs_id == "Obs. 1.2" or "fast-entry" in q or "fast entry" in q:
         if fast_entry:
             return _rank_styles_metric(df_base, fast_entry, lower_is_better=True)
-
     if obs_id == "Obs. 1.3" or "slowest sustained-execution" in q:
         if invocation_window:
             return _rank_styles_metric(df_base, invocation_window, lower_is_better=False)
         if run_duration:
             return _rank_styles_metric(df_base, run_duration, lower_is_better=False)
-
     if obs_id == "Obs. 2.1" or "most predictable" in q:
         if run_duration:
             return _rank_styles_predictability(df_base, run_duration)
-
     if obs_id == "Obs. 3.1" or "execution-centric" in q:
         tmp = _ensure_shares(df_base)
         if "execution_window_share" in tmp.columns:
             return _rank_styles_metric(tmp, "execution_window_share", lower_is_better=False)
-
     if obs_id == "Obs. 3.2" or "heavy entry plus heavy execution" in q:
         return _rank_styles_heavy_entry_execution(df_base)
-
     if obs_id == "Obs. 3.3" or "distributed overhead" in q:
         return _rank_styles_distributed_overhead(df_base)
-
     if obs_id == "Obs. 3.4" or "tail-heavy mixed" in q:
         tmp = _ensure_shares(df_base)
         if "post_invocation_share" in tmp.columns:
             return _rank_styles_metric(tmp, "post_invocation_share", lower_is_better=False)
         if post_invocation:
             return _rank_styles_metric(df_base, post_invocation, lower_is_better=False)
-
     if obs_id == "Obs. 4.1" or "usable verdict rate" in q:
         if {"style", "run_conclusion"}.issubset(df_rq4.columns):
             tmp = df_rq4.copy()
@@ -230,7 +208,6 @@ def _refresh_answer(obs_id: str, question: str, df: pd.DataFrame) -> tuple[str, 
                 first = str(rates.index[0])
                 second = str(rates.index[1]) if len(rates) > 1 else ""
                 return first, second, "Ranked by usable verdict rate on first-attempt observations."
-
     if obs_id == "Obs. 4.2" or "success rate among usable verdicts" in q:
         if {"style", "run_conclusion"}.issubset(df_rq4.columns):
             tmp = df_rq4.copy()
@@ -241,11 +218,9 @@ def _refresh_answer(obs_id: str, question: str, df: pd.DataFrame) -> tuple[str, 
                 first = str(rates.index[0])
                 second = str(rates.index[1]) if len(rates) > 1 else ""
                 return first, second, "Ranked by success rate among usable verdicts."
-
     if obs_id == "Obs. 4.3" or "trigger contexts" in q:
         if {"style", "event"}.issubset(df_rq4.columns):
             return "Yes", "", "Trigger/context differentiation retained as a style-level categorical pattern."
-
     if obs_id == "Obs. 4.4" or "trigger-conditioned" in q:
         return _rank_trigger_conditioned(df_rq4)
 

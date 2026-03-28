@@ -196,7 +196,7 @@ def _make_guide_table_md(rows: List[Dict[str, str]]) -> str:
     for row in rows:
         lines.append("|" + "|".join(_norm(row.get(h, "")) for h in headers) + "|")
     lines.append("")
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 
 def _make_profile_table_md(table_rows: List[Dict[str, str]]) -> str:
@@ -208,9 +208,9 @@ def _make_profile_table_md(table_rows: List[Dict[str, str]]) -> str:
         "|" + "|".join(["---"] * len(headers)) + "|",
     ]
     for row in table_rows:
-        lines.append("|" + "|".join(row[h].replace("\\n", " ") for h in headers) + "|")
+        lines.append("|" + "|".join(row[h].replace("\n", " ") for h in headers) + "|")
     lines.append("")
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 
 def _make_decision_support_guide_md(guide_rows: List[Dict[str, str]]) -> str:
@@ -229,7 +229,7 @@ def _make_decision_support_guide_md(guide_rows: List[Dict[str, str]]) -> str:
         latest = _norm(row.get(latest_snapshot_col, ""))
         lines.append(f"|{_norm(row.get('objective',''))}|{baseline}|{latest}|")
     lines.append("")
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 
 def _make_narrative_md(current_answers: Dict[str, str]) -> str:
@@ -252,7 +252,7 @@ def _make_narrative_md(current_answers: Dict[str, str]) -> str:
         f"For practice-facing outcome context, **{usable}** remains the strongest answer for usable-verdict rate, and **{success}** remains the strongest answer for success among usable outcomes.",
         "",
     ]
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 
 def regenerate_from_catalog(
@@ -390,16 +390,16 @@ def regenerate_from_catalog(
         ]
     )
 
-    profile_md.write_text("\\n".join(profile_lines) + "\\n", encoding="utf-8")
-    profile_json.write_text(json.dumps(profile_data, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8")
-    rules_md.write_text("\\n".join(rules_lines) + "\\n", encoding="utf-8")
-    rules_json.write_text(json.dumps(rules_data, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8")
-    refresh_report_md.write_text("\\n".join(report_lines) + "\\n", encoding="utf-8")
+    profile_md.write_text("\n".join(profile_lines) + "\n", encoding="utf-8")
+    profile_json.write_text(json.dumps(profile_data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    rules_md.write_text("\n".join(rules_lines) + "\n", encoding="utf-8")
+    rules_json.write_text(json.dumps(rules_data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    refresh_report_md.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
 
-    profile_table_md.write_text(_make_profile_table_md(table_rows) + "\\n", encoding="utf-8")
-    profile_narrative_md.write_text(_make_narrative_md(current_answers) + "\\n", encoding="utf-8")
-    decision_guide_table_md.write_text(_make_guide_table_md(guide_rows) + "\\n", encoding="utf-8")
-    decision_guide_md.write_text(_make_decision_support_guide_md(guide_rows) + "\\n", encoding="utf-8")
+    profile_table_md.write_text(_make_profile_table_md(table_rows) + "\n", encoding="utf-8")
+    profile_narrative_md.write_text(_make_narrative_md(current_answers) + "\n", encoding="utf-8")
+    decision_guide_table_md.write_text(_make_guide_table_md(guide_rows) + "\n", encoding="utf-8")
+    decision_guide_md.write_text(_make_decision_support_guide_md(guide_rows) + "\n", encoding="utf-8")
 
     with profile_table_csv.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(

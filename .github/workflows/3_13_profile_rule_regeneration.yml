@@ -55,6 +55,8 @@ jobs:
             outputs/rules/decision_support_rules.md \
             outputs/rules/decision_support_rules.json \
             outputs/rules/decision_support_guide.md \
+            outputs/rules/decision_support_guide_table.csv \
+            outputs/rules/decision_support_guide_table.md \
             outputs/reports/latest_refresh_report.md
 
           if git diff --cached --quiet; then
