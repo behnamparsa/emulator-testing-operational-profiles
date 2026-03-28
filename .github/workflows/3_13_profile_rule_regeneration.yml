@@ -49,8 +49,12 @@ jobs:
           git add \
             outputs/profiles/operational_profile.md \
             outputs/profiles/operational_profile.json \
+            outputs/profiles/operational_profile_table.md \
+            outputs/profiles/operational_profile_table.csv \
+            outputs/profiles/operational_profile_narrative.md \
             outputs/rules/decision_support_rules.md \
             outputs/rules/decision_support_rules.json \
+            outputs/rules/decision_support_guide.md \
             outputs/reports/latest_refresh_report.md
 
           if git diff --cached --quiet; then

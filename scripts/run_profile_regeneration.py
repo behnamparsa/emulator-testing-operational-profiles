@@ -16,4 +16,8 @@ if __name__ == "__main__":
         rules_md=Path("outputs/rules/decision_support_rules.md"),
         rules_json=Path("outputs/rules/decision_support_rules.json"),
         refresh_report_md=Path("outputs/reports/latest_refresh_report.md"),
+        profile_table_md=Path("outputs/profiles/operational_profile_table.md"),
+        profile_table_csv=Path("outputs/profiles/operational_profile_table.csv"),
+        profile_narrative_md=Path("outputs/profiles/operational_profile_narrative.md"),
+        decision_guide_md=Path("outputs/rules/decision_support_guide.md"),
     )
