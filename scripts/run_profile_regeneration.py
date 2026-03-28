@@ -20,4 +20,6 @@ if __name__ == "__main__":
         profile_table_csv=Path("outputs/profiles/operational_profile_table.csv"),
         profile_narrative_md=Path("outputs/profiles/operational_profile_narrative.md"),
         decision_guide_md=Path("outputs/rules/decision_support_guide.md"),
+        decision_guide_table_csv=Path("outputs/rules/decision_support_guide_table.csv"),
+        decision_guide_table_md=Path("outputs/rules/decision_support_guide_table.md"),
     )
