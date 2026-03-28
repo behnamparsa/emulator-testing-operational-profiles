@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, List
 import csv
 import json
+import re
 
 
 def _read_csv_rows(path: Path) -> List[Dict[str, str]]:
@@ -28,8 +29,25 @@ def _obs_number(row: Dict[str, str]) -> str:
     return obs_id.replace("Obs. ", "").strip()
 
 
+def _strip_leading_obs_number(text: str) -> str:
+    text = _norm(text)
+    # Removes prefixes like:
+    # 1.1 -
+    # 1.1:
+    # Obs. 1.1 -
+    # Obs. 1.1:
+    text = re.sub(r"^(Obs\.\s*)?\d+\.\d+\s*[-:]\s*", "", text, flags=re.IGNORECASE)
+    return text.strip()
+
+
 def _obs_question(row: Dict[str, str]) -> str:
-    return _norm(row.get("question", "")) or _norm(row.get("obs_title", "")) or _norm(row.get("obs_id", ""))
+    q = _strip_leading_obs_number(_norm(row.get("question", "")))
+    if q:
+        return q
+    t = _strip_leading_obs_number(_norm(row.get("obs_title", "")))
+    if t:
+        return t
+    return _norm(row.get("obs_id", ""))
 
 
 def _rq_heading(row: Dict[str, str]) -> str:
