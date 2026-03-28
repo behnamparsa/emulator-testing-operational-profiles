@@ -28,8 +28,8 @@ def _obs_number(row: Dict[str, str]) -> str:
     return obs_id.replace("Obs. ", "").strip()
 
 
-def _obs_title(row: Dict[str, str]) -> str:
-    return _norm(row.get("obs_title", "")) or _norm(row.get("question", ""))
+def _obs_question(row: Dict[str, str]) -> str:
+    return _norm(row.get("question", "")) or _norm(row.get("obs_title", "")) or _norm(row.get("obs_id", ""))
 
 
 def _rq_heading(row: Dict[str, str]) -> str:
@@ -228,7 +228,7 @@ def regenerate_from_catalog(
 
         rq_heading = _rq_heading(row)
         obs_number = _obs_number(row)
-        obs_title = _obs_title(row)
+        obs_question = _obs_question(row)
 
         if rq_heading != current_rq_heading:
             profile_lines.extend([
@@ -241,7 +241,7 @@ def regenerate_from_catalog(
             ])
             current_rq_heading = rq_heading
 
-        obs_heading = f"{obs_number} - {obs_title}" if obs_number and obs_title else obs_title or obs_id
+        obs_heading = f"{obs_number} - {obs_question}" if obs_number and obs_question else obs_question or obs_id
 
         profile_lines.extend([
             f"### {obs_heading}",
@@ -257,7 +257,6 @@ def regenerate_from_catalog(
             "rq_title": _norm(row.get("rq_title", "")),
             "obs_id": obs_id,
             "obs_number": obs_number,
-            "obs_title": obs_title,
             "question": question,
             "released_answer": released_answer,
             "latest_layer1_status": l1_value,
@@ -267,7 +266,7 @@ def regenerate_from_catalog(
         rules_lines.extend([
             f"### {obs_heading}",
             "",
-            f"- Question: {question or obs_title}",
+            f"- Question: {question or obs_question}",
             f"- Recommended current answer: **{current_answer or 'N/A'}**",
             "",
         ])
@@ -277,7 +276,6 @@ def regenerate_from_catalog(
             "rq_title": _norm(row.get("rq_title", "")),
             "obs_id": obs_id,
             "obs_number": obs_number,
-            "obs_title": obs_title,
             "question": question,
             "current_answer": current_answer,
         })
