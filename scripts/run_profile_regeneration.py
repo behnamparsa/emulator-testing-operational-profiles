@@ -1,12 +1,19 @@
 from pathlib import Path
+import sys
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from profile_qa.profile_regenerate import regenerate_from_catalog
 
-regenerate_from_catalog(
-    refreshed_catalog_csv=Path('outputs/catalog/observation_qa_catalog_refreshed.csv'),
-    profile_md=Path('outputs/profiles/operational_profile.md'),
-    profile_json=Path('outputs/profiles/operational_profile.json'),
-    rules_md=Path('outputs/rules/decision_support_rules.md'),
-    rules_json=Path('outputs/rules/decision_support_rules.json'),
-    report_md=Path('outputs/reports/latest_refresh_report.md'),
-)
-print('regenerated profile and rules')
+
+if __name__ == "__main__":
+    regenerate_from_catalog(
+        refreshed_catalog_csv=Path("outputs/catalog/observation_qa_catalog_refreshed.csv"),
+        profile_md=Path("outputs/profiles/operational_profile.md"),
+        profile_json=Path("outputs/profiles/operational_profile.json"),
+        rules_md=Path("outputs/rules/decision_support_rules.md"),
+        rules_json=Path("outputs/rules/decision_support_rules.json"),
+        refresh_report_md=Path("outputs/reports/latest_refresh_report.md"),
+    )
