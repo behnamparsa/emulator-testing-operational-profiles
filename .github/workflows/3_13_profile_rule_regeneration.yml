@@ -1,26 +1,70 @@
 name: Profile and Rule Regeneration
+
 on:
   workflow_dispatch:
+  workflow_call:
+
 permissions:
   contents: write
+
+concurrency:
+  group: data-processed-writer
+  cancel-in-progress: false
+
 jobs:
   regenerate:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v6
+      - name: Check out repository
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - run: |
+
+      - name: Install dependencies
+        run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - run: python scripts/run_profile_regeneration.py
-      - run: |
+
+      - name: Run profile and rule regeneration
+        run: |
+          PYTHONPATH=. python scripts/run_profile_regeneration.py
+
+      - name: Commit regenerated outputs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add outputs/profiles/operational_profile.md outputs/profiles/operational_profile.json outputs/rules/decision_support_rules.md outputs/rules/decision_support_rules.json outputs/reports/latest_refresh_report.md
-          git diff --cached --quiet || git commit -m "Regenerate profile and rules"
-          git pull --rebase origin main || true
-          git push origin HEAD:main || true
+
+          git add \
+            outputs/profiles/operational_profile.md \
+            outputs/profiles/operational_profile.json \
+            outputs/rules/decision_support_rules.md \
+            outputs/rules/decision_support_rules.json \
+            outputs/reports/latest_refresh_report.md
+
+          if git diff --cached --quiet; then
+            echo "No regenerated-output changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Regenerate profile and rules"
+
+          pushed=0
+          for i in 1 2 3; do
+            echo "Push attempt ${i}"
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              pushed=1
+              break
+            fi
+            echo "Push attempt ${i} failed; retrying after 10s..."
+            sleep 10
+          done
+
+          test "${pushed}" = "1"
