@@ -33,6 +33,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Sync latest main after Layer 1
+        run: |
+          git pull --rebase origin main
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:

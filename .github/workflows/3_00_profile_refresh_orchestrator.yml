@@ -1,24 +1,35 @@
 name: Profile Refresh Orchestrator
+
 on:
   workflow_dispatch:
     inputs:
       snapshot_tag:
+        description: Optional snapshot tag override
         required: false
         default: ''
+        type: string
+
 permissions:
   contents: write
+
+concurrency:
+  group: data-processed-writer
+  cancel-in-progress: false
+
 jobs:
   layer1:
     uses: ./.github/workflows/3_11_layer1_observation_validation.yml
     with:
       snapshot_tag: ${{ inputs.snapshot_tag }}
     secrets: inherit
+
   layer2:
     needs: layer1
     uses: ./.github/workflows/3_12_layer2_answer_refresh.yml
     with:
       snapshot_tag: ${{ inputs.snapshot_tag }}
     secrets: inherit
+
   regenerate:
     needs: layer2
     uses: ./.github/workflows/3_13_profile_rule_regeneration.yml
