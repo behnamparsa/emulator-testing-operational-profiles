@@ -1,8 +1,1 @@
-# Operational performance profile summary (regenerated)
-
-**Conditional** is currently the best-supported answer for the fastest overall operational profile question.
-**Conditional** remains the clearest fast-entry style, while **Conditional** remains the clearest slow sustained-execution profile.
-On predictability, **Conditional** remains the strongest predictability-first profile.
-For overhead composition, **Conditional** remains the distributed-overhead case, **Conditional** remains the heavy-entry plus heavy-execution case, and **Conditional** remains the tail-heavy mixed case.
-For practice-facing outcome context, **Conditional** remains the strongest answer for usable-verdict rate, and **Conditional** remains the strongest answer for success among usable outcomes.
-
+# Operational performance profile summary (regenerated)\n\n**Conditional** is currently the best-supported answer for the fastest overall operational profile question.\n**Conditional** remains the clearest fast-entry style, while **Conditional** remains the clearest slow sustained-execution profile.\nOn predictability, **Conditional** remains the strongest predictability-first profile.\nFor overhead composition, **Conditional** remains the distributed-overhead case, **Conditional** remains the heavy-entry plus heavy-execution case, and **Conditional** remains the tail-heavy mixed case.\nFor practice-facing outcome context, **GMD** remains the strongest answer for usable-verdict rate, and **GMD** remains the strongest answer for success among usable outcomes.\n\n

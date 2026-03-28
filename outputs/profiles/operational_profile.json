@@ -7,7 +7,8 @@
     "question": "Which style is the fastest overall operational profile?",
     "released_answer": "Community",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ1",
@@ -17,7 +18,8 @@
     "question": "Which style shows the clearest fast-entry profile without being the fastest overall finisher?",
     "released_answer": "GMD",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ1",
@@ -27,7 +29,8 @@
     "question": "Which style is the slowest sustained-execution profile?",
     "released_answer": "Third-Party",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ1",
@@ -37,7 +40,8 @@
     "question": "Which style shows a mixed speed profile with competitive entry, middling core path, and a long completion tail?",
     "released_answer": "Custom",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ1",
@@ -47,7 +51,8 @@
     "question": "Which style combines a fast core execution profile with a longer residual tail?",
     "released_answer": "Community",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ2",
@@ -57,7 +62,8 @@
     "question": "Which style is the most predictable on the main completion-oriented measures?",
     "released_answer": "GMD",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ2",
@@ -67,7 +73,8 @@
     "question": "Which style is fast in typical terms but predictability-poor?",
     "released_answer": "Community",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ2",
@@ -77,7 +84,8 @@
     "question": "Which style carries the strongest absolute tail-risk profile?",
     "released_answer": "Third-Party",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ2",
@@ -87,7 +95,8 @@
     "question": "Which style shows a mixed predictability profile that should be interpreted cautiously?",
     "released_answer": "Custom",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ3",
@@ -97,7 +106,8 @@
     "question": "Which style is the clearest execution-centric overhead profile?",
     "released_answer": "GMD",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ3",
@@ -107,7 +117,8 @@
     "question": "Which style is best characterized by heavy entry plus heavy execution rather than a dominant completion tail?",
     "released_answer": "Third-Party",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ3",
@@ -117,7 +128,8 @@
     "question": "Which style has a distributed overhead profile rather than a single dominant overhead source?",
     "released_answer": "Community",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ3",
@@ -127,7 +139,8 @@
     "question": "Which style remains a cautious tail-heavy mixed overhead case?",
     "released_answer": "Custom",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Conditional",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ4",
@@ -137,7 +150,8 @@
     "question": "Which style currently has the strongest usable run-level verdict rate?",
     "released_answer": "GMD",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "GMD",
+    "current_runner_up": "Third-Party"
   },
   {
     "rq_id": "RQ4",
@@ -147,7 +161,8 @@
     "question": "Which style currently has the strongest success rate among usable verdicts?",
     "released_answer": "GMD",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "GMD",
+    "current_runner_up": "Community"
   },
   {
     "rq_id": "RQ4",
@@ -157,7 +172,8 @@
     "question": "Do the styles remain deployed in markedly different CI trigger contexts?",
     "released_answer": "Yes",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Yes",
+    "current_runner_up": ""
   },
   {
     "rq_id": "RQ4",
@@ -167,6 +183,7 @@
     "question": "Which styles remain strongly trigger-conditioned in success behavior?",
     "released_answer": "Third-Party and Custom",
     "latest_layer1_status": "Yes",
-    "current_answer": "Conditional"
+    "current_answer": "Third-Party",
+    "current_runner_up": "Custom"
   }
-]
+]\n
