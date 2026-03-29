@@ -13,6 +13,11 @@ from scipy.stats import chi2_contingency, kruskal, mannwhitneyu
 STYLE_ORDER = ["Community", "Custom", "GMD", "Third-Party"]
 STYLE_SET = set(STYLE_ORDER)
 
+ALPHA = 0.05
+MIN_OMNIBUS_EPSILON_SQ = 0.01
+MIN_PAIRWISE_RBC = 0.147
+MIN_CRAMERS_V = 0.10
+
 
 @dataclass
 class EvalResult:
@@ -326,6 +331,44 @@ def evaluate_item(obs_id: str, question: str, df: pd.DataFrame) -> EvalResult:
 
 
 
+def _safe_float(x: object) -> float:
+    try:
+        return float(x)
+    except Exception:
+        return float("nan")
+
+
+def _kruskal_epsilon_squared(h_stat: float, k: int, n: int) -> float:
+    if n <= k or k < 2 or pd.isna(h_stat):
+        return 0.0
+    return max(0.0, float((h_stat - k + 1) / (n - k)))
+
+
+def _rank_biserial_from_u(u_stat: float, n1: int, n2: int, lower_is_better: bool) -> float:
+    if n1 <= 0 or n2 <= 0:
+        return 0.0
+    rbc = 1.0 - (2.0 * float(u_stat)) / float(n1 * n2)
+    return float(rbc if lower_is_better else -rbc)
+
+
+def _cramers_v_from_table(table: pd.DataFrame, chi2: float) -> float:
+    n = int(table.to_numpy().sum())
+    if n <= 0:
+        return 0.0
+    r, k = table.shape
+    denom = min(r - 1, k - 1)
+    if denom <= 0:
+        return 0.0
+    return float((chi2 / (n * denom)) ** 0.5)
+
+
+def _pairwise_best_competitor(current_style: str, winner: str, styles: Sequence[str]) -> list[str]:
+    ordered = [s for s in styles if s not in {current_style}]
+    if winner and winner != current_style and winner in ordered:
+        return [winner] + [s for s in ordered if s != winner]
+    return ordered
+
+
 def _holm_adjust(pvals: List[Tuple[str, float]]) -> Dict[str, float]:
     ordered = sorted(pvals, key=lambda kv: kv[1])
     m = len(ordered)
@@ -355,10 +398,11 @@ def validate_stored_answer(row: Dict[str, str], df: pd.DataFrame, stored_answer:
         if table.shape[0] < 2 or table.shape[1] < 2:
             return "Insufficient evidence", "Not enough style/event diversity for chi-square validation.", result
         chi2, p, _, _ = chi2_contingency(table)
+        v = _cramers_v_from_table(table, chi2)
         current = norm(stored_answer).lower() in {"yes", "true"}
-        passed = current and p < 0.05
-        status = "Passed" if passed else "Failed"
-        note = f"Chi-square on style × {trigger_col}: p={p:.3g}; stored answer='{stored_answer}'."
+        fail = (not current) or (p < ALPHA and v >= MIN_CRAMERS_V)
+        status = "Failed" if fail else "Passed"
+        note = f"Chi-square on style × {trigger_col}: p={p:.3g}, Cramer's V={v:.3f}; stored answer='{stored_answer}'."
         return status, note, result
 
     if not stored_styles:
@@ -370,18 +414,16 @@ def validate_stored_answer(row: Dict[str, str], df: pd.DataFrame, stored_answer:
     if result.categorical_mode in {"usable_verdict_rate", "success_among_usable", "trigger_conditioned_spread"}:
         winner = result.winner
         scores = result.score_by_style
-        if winner != current_style:
-            return "Failed", f"Stored style '{current_style}' is no longer top-scoring; current winner is '{winner}'. {result.note}", result
-        tmp = first_attempt_subset(df)
+        tmp = first_attempt_subset(df).copy()
         if result.categorical_mode == "trigger_conditioned_spread":
-            # Validate by comparing stored winner's spread against the next-best style.
             ordered = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
             if len(ordered) < 2:
                 return "Passed", f"Only one style had enough trigger-conditioned evidence. {result.note}", result
             gap = ordered[0][1] - ordered[1][1]
-            passed = gap > 0
-            return ("Passed" if passed else "Failed"), f"Trigger-conditioned spread gap={gap:.4f}; winner='{winner}'. {result.note}", result
-        tmp = tmp.copy()
+            fail = winner != current_style and gap > 0.05
+            note = f"Trigger-conditioned spread gap={gap:.4f}; stored='{current_style}', winner='{winner}'."
+            return ("Failed" if fail else "Passed"), note + f" {result.note}", result
+
         if result.categorical_mode == "usable_verdict_rate":
             tmp["flag"] = tmp["run_conclusion"].isin(["success", "failure"]).astype(int)
         else:
@@ -391,14 +433,14 @@ def validate_stored_answer(row: Dict[str, str], df: pd.DataFrame, stored_answer:
         if table.shape[0] < 2 or table.shape[1] < 2:
             return "Insufficient evidence", f"Not enough categorical variation for {result.categorical_mode} validation.", result
         chi2, p, _, _ = chi2_contingency(table)
-        passed = p < 0.05 and winner == current_style
-        note = f"Chi-square for {result.categorical_mode}: p={p:.3g}; stored='{current_style}', winner='{winner}'."
-        return ("Passed" if passed else "Failed"), note, result
+        v = _cramers_v_from_table(table, chi2)
+        fail = winner != current_style and p < ALPHA and v >= MIN_CRAMERS_V
+        note = f"Chi-square for {result.categorical_mode}: p={p:.3g}, Cramer's V={v:.3f}; stored='{current_style}', winner='{winner}'."
+        return ("Failed" if fail else "Passed"), note, result
 
-    if not result.validation_metric or result.validation_metric not in df.columns and result.validation_metric not in ensure_shares(df).columns:
-        # still allow score-winner check if composite signal only
+    if not result.validation_metric or (result.validation_metric not in df.columns and result.validation_metric not in ensure_shares(df).columns):
         passed = result.winner == current_style
-        return ("Passed" if passed else "Failed"), f"Validated by current scoring winner only; stored='{current_style}', winner='{result.winner}'. {result.note}", result
+        return ("Passed" if passed else "Insufficient evidence"), f"No direct validation metric available; checked current scoring winner only. stored='{current_style}', winner='{result.winner}'. {result.note}", result
 
     src = ensure_shares(base_subset(df))
     val_col = result.validation_metric
@@ -414,31 +456,56 @@ def validate_stored_answer(row: Dict[str, str], df: pd.DataFrame, stored_answer:
 
     styles = [s for s in STYLE_ORDER if s in set(tmp["style"].astype(str))]
     groups = [tmp.loc[tmp["style"] == s, val_col].dropna() for s in styles]
-    if len([g for g in groups if len(g) > 1]) < 2:
+    valid_groups = [g for g in groups if len(g) > 1]
+    if len(valid_groups) < 2:
         return "Insufficient evidence", f"Too few style groups for omnibus test on '{val_col}'.", result
 
-    _, omnibus_p = kruskal(*groups)
-    if result.winner != current_style:
-        return "Failed", f"Stored style '{current_style}' is no longer the score winner; current winner is '{result.winner}'. Omnibus p={omnibus_p:.3g}. {result.note}", result
+    h_stat, omnibus_p = kruskal(*groups)
+    n_total = sum(len(g) for g in groups)
+    eps_sq = _kruskal_epsilon_squared(h_stat, len(groups), n_total)
 
+    competitors = _pairwise_best_competitor(current_style, result.winner, styles)
     pairwise = []
-    for style in styles:
-        if style == current_style:
-            continue
+    strongest_against = None
+    for style in competitors:
         other = tmp.loc[tmp["style"] == style, val_col].dropna()
         if len(other) < 2:
             continue
         alt = 'less' if result.lower_is_better else 'greater'
         try:
             stat = mannwhitneyu(current_sample, other, alternative=alt)
-            pairwise.append((style, float(stat.pvalue)))
+            effect = _rank_biserial_from_u(float(stat.statistic), len(current_sample), len(other), bool(result.lower_is_better))
+            pairwise.append((style, float(stat.pvalue), effect))
+            if strongest_against is None and style == result.winner:
+                strongest_against = (style, float(stat.pvalue), effect)
         except Exception:
             continue
+
+    if strongest_against is None and pairwise:
+        strongest_against = pairwise[0]
+
     if not pairwise:
-        return "Passed", f"Stored style '{current_style}' remained the score winner; omnibus p={omnibus_p:.3g}. {result.note}", result
-    adj = _holm_adjust(pairwise)
-    all_sig = all(p < 0.05 for p in adj.values())
-    passed = omnibus_p < 0.05 and all_sig
-    comps = ", ".join(f"vs {style}: p_adj={p:.3g}" for style, p in adj.items())
-    note = f"Kruskal on {val_col}: p={omnibus_p:.3g}; {comps}. Stored='{current_style}', winner='{result.winner}'."
-    return ("Passed" if passed else "Failed"), note, result
+        passed = result.winner == current_style
+        return ("Passed" if passed else "Insufficient evidence"), f"Stored='{current_style}', winner='{result.winner}'. Omnibus p={omnibus_p:.3g}, epsilon^2={eps_sq:.3f}. No usable pairwise test was available. {result.note}", result
+
+    adj = _holm_adjust([(style, p) for style, p, _ in pairwise])
+    strongest_style, strongest_p_raw, strongest_eff = strongest_against
+    strongest_p = adj.get(strongest_style, strongest_p_raw)
+
+    fail = (
+        result.winner != current_style
+        and omnibus_p < ALPHA
+        and eps_sq >= MIN_OMNIBUS_EPSILON_SQ
+        and strongest_p < ALPHA
+        and abs(strongest_eff) >= MIN_PAIRWISE_RBC
+    )
+    comps = ", ".join(
+        f"vs {style}: p_adj={adj.get(style, p):.3g}, rbc={eff:.3f}"
+        for style, p, eff in pairwise
+    )
+    note = (
+        f"Kruskal on {val_col}: p={omnibus_p:.3g}, epsilon^2={eps_sq:.3f}; {comps}. "
+        f"stored='{current_style}', winner='{result.winner}'. "
+        f"Fail only when winner changes with significant omnibus + pairwise support and meaningful effect size."
+    )
+    return ("Failed" if fail else "Passed"), note, result
