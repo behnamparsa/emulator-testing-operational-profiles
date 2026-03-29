@@ -146,10 +146,10 @@
 ### Obs. 4.3 — Do the styles remain deployed in markedly different CI trigger contexts?
 
 - Released answer: `Yes`
-- Latest Layer 1 status: `Failed`
+- Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Yes`
 - Current active answer: `Yes`
-- Validation note: Chi-square on style × event: p=0, Cramer's V=0.395; stored answer='Yes'.
+- Validation note: Chi-square on style × event: p=0, Cramer's V=0.395; stored answer='Yes', supported=True.
 - Favored-answer note: Validated via style × trigger/event distribution difference.
 
 ### Obs. 4.4 — Which styles remain strongly trigger-conditioned in success behavior?
