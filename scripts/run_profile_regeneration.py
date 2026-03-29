@@ -13,7 +13,6 @@ if __name__ == "__main__":
         refreshed_catalog_csv=Path("outputs/catalog/observation_qa_catalog_refreshed.csv"),
         profile_md=Path("outputs/profiles/operational_profile.md"),
         profile_json=Path("outputs/profiles/operational_profile.json"),
-        rules_md=Path("outputs/rules/decision_support_rules.md"),
         rules_json=Path("outputs/rules/decision_support_rules.json"),
         refresh_report_md=Path("outputs/reports/latest_refresh_report.md"),
         profile_table_md=Path("outputs/profiles/operational_profile_table.md"),
@@ -21,5 +20,4 @@ if __name__ == "__main__":
         profile_narrative_md=Path("outputs/profiles/operational_profile_narrative.md"),
         decision_guide_md=Path("outputs/rules/decision_support_guide.md"),
         decision_guide_table_csv=Path("outputs/rules/decision_support_guide_table.csv"),
-        decision_guide_table_md=Path("outputs/rules/decision_support_guide_table.md"),
     )
