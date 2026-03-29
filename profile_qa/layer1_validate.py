@@ -52,7 +52,7 @@ def _latest_active_answer(row: Dict[str, str], current_tag: str) -> str:
 def run_layer1(
     catalog_csv: Path = Path("outputs/catalog/observation_qa_catalog.csv"),
     main_dataset_csv: Path = Path("data/processed/MainDataset.csv"),
-    out_csv: Path = Path("outputs/catalog/observation_qa_catalog_validated.csv"),
+    out_csv: Path = Path("outputs/catalog/observation_qa_catalog_refreshed.csv"),
     snapshot_tag_value: str | None = None,
 ) -> None:
     rows: List[Dict[str, str]] = read_csv_rows(catalog_csv)
@@ -71,13 +71,14 @@ def run_layer1(
         row_out = dict(row)
         target_answer = _latest_active_answer(row_out, suffix)
         status, note, _ = validate_stored_answer(row_out, df, target_answer)
+        row_out.pop("released_observation_text", None)
         row_out[target_col] = target_answer
         row_out[validate_col] = status
         row_out[note_col] = note
         out_rows.append(row_out)
 
     write_csv_rows(out_csv, out_rows)
-    print(f"Wrote Layer 1 validated catalog to: {out_csv}")
+    print(f"Wrote Layer 1 state catalog to: {out_csv}")
     print(f"Added columns: {target_col}, {validate_col}, {note_col}")
 
 

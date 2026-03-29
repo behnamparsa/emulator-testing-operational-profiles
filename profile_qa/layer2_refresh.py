@@ -9,7 +9,7 @@ from .item_logic import evaluate_item
 
 
 
-def run_layer2(validated_catalog_csv: Path, main_dataset_csv: Path, out_csv: Path, snapshot: str | None = None) -> Path:
+def run_layer2(refreshed_catalog_csv: Path, main_dataset_csv: Path, out_csv: Path, snapshot: str | None = None) -> Path:
     tag = snapshot_tag(snapshot, main_dataset_csv)
     target_col = f"L1_target_answer_{tag}"
     validate_col = f"L1_validate_{tag}"
@@ -17,10 +17,11 @@ def run_layer2(validated_catalog_csv: Path, main_dataset_csv: Path, out_csv: Pat
     note_col = f"L2_note_{tag}"
     used_col = f"L2_used_{tag}"
 
-    rows: List[Dict[str, str]] = read_csv_rows(validated_catalog_csv)
+    rows: List[Dict[str, str]] = read_csv_rows(refreshed_catalog_csv)
     df = pd.read_csv(main_dataset_csv)
 
     for row in rows:
+        row.pop("released_observation_text", None)
         target_answer = str(row.get(target_col, "") or row.get("released_answer", "")).strip()
         l1_status = str(row.get(validate_col, "")).strip()
         if l1_status == "Passed":

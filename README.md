@@ -9,7 +9,7 @@ This repository now supports **two connected capabilities**:
 2. **Question-answer evidence refresh** for the released study findings
    - Layer 1: validate whether each released observation from the paper is still supported by the newest snapshot
    - Layer 2: refresh the best-supported answer to each observation-question when support changes
-   - regenerate the operational profile and the decision-support rule set from the validated or refreshed answers
+   - regenerate the operational profile and the decision-support rule set from the refreshed state table
 
 The repository therefore acts as a **two-layer evidence-refresh system**:
 - **Layer 1: observation validation** — rerun the same analysis logic used in the study and record whether each released answer is still supported by the latest snapshot.
@@ -47,7 +47,7 @@ This design keeps Layer 1 and Layer 2 connected:
 - `profile_qa/layer2_refresh.py`
   - refreshed answer selection for the same questions
 - `profile_qa/profile_regenerate.py`
-  - regenerate profile and rules from the latest validated/refreshed catalog
+  - regenerate profile and rules from the latest refreshed state catalog
 - `profile_qa/io_utils.py`
   - catalog reading, snapshot-column append, artifact path helpers
 
@@ -60,10 +60,8 @@ This design keeps Layer 1 and Layer 2 connected:
 ### Outputs
 - `outputs/catalog/observation_qa_catalog.csv`
   - master released question-answer catalog
-- `outputs/catalog/observation_qa_catalog_validated.csv`
-  - same catalog with dated Layer 1 validation columns
 - `outputs/catalog/observation_qa_catalog_refreshed.csv`
-  - same catalog with dated Layer 2 refreshed-answer columns
+  - evolving state table with dated Layer 1 validation and Layer 2 refresh columns
 - `outputs/profiles/operational_profile.md`
 - `outputs/profiles/operational_profile.json`
 - `outputs/rules/decision_support_rules.md`
@@ -88,7 +86,6 @@ Recommended base columns:
 - `obs_id`
 - `question_text`
 - `released_answer`
-- `released_observation_text`
 - `analysis_regime`
 - `primary_metric`
 - `test_spec`
@@ -136,7 +133,7 @@ Recommended answer outcomes:
 - `Conditional`
 - `Insufficient evidence`
 
-This refreshed answer table becomes the direct input to profile regeneration and rule regeneration.
+This refreshed state table becomes the direct input to profile regeneration and rule regeneration. It also carries the dated Layer 1 validation columns, so a separate validated CSV is not needed.
 
 ## Regenerated artifacts
 

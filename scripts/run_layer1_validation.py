@@ -16,6 +16,6 @@ if __name__ == "__main__":
     run_layer1(
         catalog_csv=baseline,
         main_dataset_csv=Path("data/processed/MainDataset.csv"),
-        out_csv=Path("outputs/catalog/observation_qa_catalog_validated.csv"),
+        out_csv=Path("outputs/catalog/observation_qa_catalog_refreshed.csv"),
         snapshot_tag_value=os.getenv("SNAPSHOT_TAG", ""),
     )
