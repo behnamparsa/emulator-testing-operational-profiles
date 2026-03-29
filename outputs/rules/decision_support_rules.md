@@ -10,7 +10,7 @@
 ### 1.2 - Which style shows the clearest fast-entry profile without being the fastest overall finisher?
 
 - Question: Which style shows the clearest fast-entry profile without being the fastest overall finisher?
-- Recommended current answer: **Community**
+- Recommended current answer: **GMD**
 
 ### 1.3 - Which style is the slowest sustained-execution profile?
 
@@ -59,12 +59,12 @@
 ### 3.2 - Which style is best characterized by heavy entry plus heavy execution rather than a dominant completion tail?
 
 - Question: Which style is best characterized by heavy entry plus heavy execution rather than a dominant completion tail?
-- Recommended current answer: **GMD**
+- Recommended current answer: **Third-Party**
 
 ### 3.3 - Which style has a distributed overhead profile rather than a single dominant overhead source?
 
 - Question: Which style has a distributed overhead profile rather than a single dominant overhead source?
-- Recommended current answer: **Custom**
+- Recommended current answer: **Community**
 
 ### 3.4 - Which style remains a cautious tail-heavy mixed overhead case?
 

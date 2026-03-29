@@ -14,9 +14,9 @@
 
 - Released answer: **GMD**
 - Layer 1 validated answer: **GMD**
-- Latest Layer 1 status: **Failed**
-- Current answer: **Community**
-- Layer 2 used: **Yes**
+- Latest Layer 1 status: **Passed**
+- Current answer: **GMD**
+- Layer 2 used: **No**
 
 ### 1.3 - Which style is the slowest sustained-execution profile?
 
@@ -48,9 +48,9 @@
 
 - Released answer: **GMD**
 - Layer 1 validated answer: **GMD**
-- Latest Layer 1 status: **Failed**
+- Latest Layer 1 status: **Passed**
 - Current answer: **GMD**
-- Layer 2 used: **Yes**
+- Layer 2 used: **No**
 
 ### 2.2 - Which style is fast in typical terms but predictability-poor?
 
@@ -64,17 +64,17 @@
 
 - Released answer: **Third-Party**
 - Layer 1 validated answer: **Third-Party**
-- Latest Layer 1 status: **Failed**
+- Latest Layer 1 status: **Passed**
 - Current answer: **Third-Party**
-- Layer 2 used: **Yes**
+- Layer 2 used: **No**
 
 ### 2.4 - Which style shows a mixed predictability profile that should be interpreted cautiously?
 
 - Released answer: **Custom**
 - Layer 1 validated answer: **Custom**
-- Latest Layer 1 status: **Failed**
+- Latest Layer 1 status: **Passed**
 - Current answer: **Custom**
-- Layer 2 used: **Yes**
+- Layer 2 used: **No**
 
 ## RQ3 - Overhead composition and actionable levers
 
@@ -90,17 +90,17 @@
 
 - Released answer: **Third-Party**
 - Layer 1 validated answer: **Third-Party**
-- Latest Layer 1 status: **Failed**
-- Current answer: **GMD**
-- Layer 2 used: **Yes**
+- Latest Layer 1 status: **Passed**
+- Current answer: **Third-Party**
+- Layer 2 used: **No**
 
 ### 3.3 - Which style has a distributed overhead profile rather than a single dominant overhead source?
 
 - Released answer: **Community**
 - Layer 1 validated answer: **Community**
-- Latest Layer 1 status: **Failed**
-- Current answer: **Custom**
-- Layer 2 used: **Yes**
+- Latest Layer 1 status: **Passed**
+- Current answer: **Community**
+- Layer 2 used: **No**
 
 ### 3.4 - Which style remains a cautious tail-heavy mixed overhead case?
 
@@ -132,9 +132,9 @@
 
 - Released answer: **Yes**
 - Layer 1 validated answer: **Yes**
-- Latest Layer 1 status: **Passed**
+- Latest Layer 1 status: **Failed**
 - Current answer: **Yes**
-- Layer 2 used: **No**
+- Layer 2 used: **Yes**
 
 ### 4.4 - Which styles remain strongly trigger-conditioned in success behavior?
 

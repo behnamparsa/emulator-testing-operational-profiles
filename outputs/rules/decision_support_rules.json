@@ -13,7 +13,7 @@
     "obs_id": "Obs. 1.2",
     "obs_number": "1.2",
     "question": "Which style shows the clearest fast-entry profile without being the fastest overall finisher?",
-    "current_answer": "Community"
+    "current_answer": "GMD"
   },
   {
     "rq_id": "RQ1",
@@ -85,7 +85,7 @@
     "obs_id": "Obs. 3.2",
     "obs_number": "3.2",
     "question": "Which style is best characterized by heavy entry plus heavy execution rather than a dominant completion tail?",
-    "current_answer": "GMD"
+    "current_answer": "Third-Party"
   },
   {
     "rq_id": "RQ3",
@@ -93,7 +93,7 @@
     "obs_id": "Obs. 3.3",
     "obs_number": "3.3",
     "question": "Which style has a distributed overhead profile rather than a single dominant overhead source?",
-    "current_answer": "Custom"
+    "current_answer": "Community"
   },
   {
     "rq_id": "RQ3",
