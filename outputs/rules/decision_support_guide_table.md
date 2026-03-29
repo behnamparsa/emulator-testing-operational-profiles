@@ -1,5 +1,6 @@
 # Decision-support guide table
 
+<<<<<<< HEAD
 |objective|paper_recommendation|snapshot_2026_03_27|
 |---|---|---|
 |Predictable feedback|GMD|GMD|
@@ -7,4 +8,13 @@
 |Fastest typical end-to-end completion|Community|Community|
 |Usable and successful run outcomes|GMD|GMD|
 |Overhead-placement-led optimization|GMD|GMD|
+=======
+|objective|paper_first|paper_second|snapshot_2026_03_28|snapshot_2026_03_29|paper_recommendation|
+|---|---|---|---|---|---|
+|Predictable feedback|GMD|Community|1st: Conditional | 2nd: Community|GMD|GMD|
+|Fast first signal|GMD|Community|1st: Conditional | 2nd: Community|Community|GMD|
+|Fastest typical end-to-end completion|Community|GMD|1st: Conditional | 2nd: GMD|Community|Community|
+|Usable and successful run outcomes|GMD|Community|1st: GMD | 2nd: Community|GMD|GMD|
+|Overhead-placement-led optimization|GMD|Community|1st: Conditional | 2nd: Community|GMD|GMD|
+>>>>>>> bdbb4671bb11383b148a4bdec0e9019fca11d952
 
