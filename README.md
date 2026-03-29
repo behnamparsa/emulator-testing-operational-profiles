@@ -40,6 +40,6 @@ This executes:
 1. Layer 1 validation/update refresh
 2. Profile and rule regeneration
 
-## Removed Layer 2 model
 
-Layer 2 refresh is no longer part of the analytical pipeline, outputs, or reports. Any remaining legacy Layer 2 files can be removed safely after this migration.
+
+
