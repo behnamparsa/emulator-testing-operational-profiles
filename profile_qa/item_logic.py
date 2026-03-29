@@ -400,9 +400,13 @@ def validate_stored_answer(row: Dict[str, str], df: pd.DataFrame, stored_answer:
         chi2, p, _, _ = chi2_contingency(table)
         v = _cramers_v_from_table(table, chi2)
         current = norm(stored_answer).lower() in {"yes", "true"}
-        fail = (not current) or (p < ALPHA and v >= MIN_CRAMERS_V)
+        supported = (p < ALPHA and v >= MIN_CRAMERS_V)
+        fail = (current and not supported) or ((not current) and supported)
         status = "Failed" if fail else "Passed"
-        note = f"Chi-square on style × {trigger_col}: p={p:.3g}, Cramer's V={v:.3f}; stored answer='{stored_answer}'."
+        note = (
+            f"Chi-square on style × {trigger_col}: p={p:.3g}, Cramer's V={v:.3f}; "
+            f"stored answer='{stored_answer}', supported={supported}."
+        )
         return status, note, result
 
     if not stored_styles:
