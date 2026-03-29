@@ -71,7 +71,8 @@ def run_layer1(
         row_out = dict(row)
         target_answer = _latest_active_answer(row_out, suffix)
         status, note, _ = validate_stored_answer(row_out, df, target_answer)
-        row_out.pop("released_observation_text", None)
+        for redundant in ["released_observation_text", "source_section", "source_paper_path", "test_scope", "primary_metric", "primary_metrics", "statistical_test_plan"]:
+            row_out.pop(redundant, None)
         row_out[target_col] = target_answer
         row_out[validate_col] = status
         row_out[note_col] = note

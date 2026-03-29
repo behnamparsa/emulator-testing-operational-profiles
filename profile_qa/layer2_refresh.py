@@ -21,7 +21,8 @@ def run_layer2(refreshed_catalog_csv: Path, main_dataset_csv: Path, out_csv: Pat
     df = pd.read_csv(main_dataset_csv)
 
     for row in rows:
-        row.pop("released_observation_text", None)
+        for redundant in ["released_observation_text", "source_section", "source_paper_path", "test_scope", "primary_metric", "primary_metrics", "statistical_test_plan"]:
+            row.pop(redundant, None)
         target_answer = str(row.get(target_col, "") or row.get("released_answer", "")).strip()
         l1_status = str(row.get(validate_col, "")).strip()
         if l1_status == "Passed":
