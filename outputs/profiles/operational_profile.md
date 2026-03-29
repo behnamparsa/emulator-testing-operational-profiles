@@ -32,19 +32,19 @@
 ### Obs. 1.4 — Which style shows a mixed speed profile with competitive entry, middling core path, and a long completion tail?
 
 - Released answer: `Custom`
-- Latest Layer 1 status: `Failed`
+- Latest Layer 1 status: `Passed`
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
-- Validation note: Kruskal on study_post_invocation_selected_stage3_seconds: p=1.13e-71, epsilon^2=0.056; vs GMD: p_adj=2.27e-13, rbc=0.802, vs Community: p_adj=0.00767, rbc=0.241, vs Third-Party: p_adj=6.45e-08, rbc=0.599. stored='Custom', winner='GMD'. Fail only when winner changes with significant omnibus + pairwise support and meaningful effect size.
+- Validation note: Kruskal on study_post_invocation_selected_stage3_seconds: p=1.13e-71, epsilon^2=0.056; vs Community: p_adj=1, rbc=-0.721, vs Custom: p_adj=1, rbc=-0.802, vs Third-Party: p_adj=1, rbc=-0.040. stored='GMD', winner='GMD'. Fail only when winner changes with significant omnibus + pairwise support and meaningful effect size.
 - Favored-answer note: Scored as mixed speed profile: competitive entry/execution with heavier post-invocation tail.
 
 ### Obs. 1.5 — Which style combines a fast core execution profile with a longer residual tail?
 
 - Released answer: `Community`
-- Latest Layer 1 status: `Failed`
+- Latest Layer 1 status: `Passed`
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
-- Validation note: Kruskal on study_invocation_execution_window_selected_stage3_seconds: p=7.71e-51, epsilon^2=0.040; vs GMD: p_adj=4.57e-22, rbc=0.469, vs Custom: p_adj=0.0173, rbc=0.210, vs Third-Party: p_adj=8.4e-33, rbc=0.630. stored='Community', winner='GMD'. Fail only when winner changes with significant omnibus + pairwise support and meaningful effect size.
+- Validation note: Kruskal on study_invocation_execution_window_selected_stage3_seconds: p=7.71e-51, epsilon^2=0.040; vs Community: p_adj=1, rbc=-0.469, vs Custom: p_adj=1, rbc=-0.196, vs Third-Party: p_adj=3.33e-11, rbc=0.474. stored='GMD', winner='GMD'. Fail only when winner changes with significant omnibus + pairwise support and meaningful effect size.
 - Favored-answer note: Scored by fast core execution plus longer post-invocation tail.
 
 ## RQ2 — Predictability and tail risk
@@ -61,10 +61,10 @@
 ### Obs. 2.2 — Which style is fast in typical terms but predictability-poor?
 
 - Released answer: `Community`
-- Latest Layer 1 status: `Failed`
+- Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
-- Validation note: Kruskal on study_run_duration_seconds: p=6.32e-66, epsilon^2=0.035; vs Third-Party: p_adj=2.91e-56, rbc=0.412, vs Custom: p_adj=0.000399, rbc=0.311, vs GMD: p_adj=5.04e-11, rbc=0.231. stored='Community', winner='Third-Party'. Fail only when winner changes with significant omnibus + pairwise support and meaningful effect size.
+- Validation note: Kruskal on study_run_duration_seconds: p=6.32e-66, epsilon^2=0.035; vs Community: p_adj=1, rbc=-0.412, vs Custom: p_adj=1, rbc=-0.139, vs GMD: p_adj=1, rbc=-0.726. stored='Third-Party', winner='Third-Party'. Fail only when winner changes with significant omnibus + pairwise support and meaningful effect size.
 - Favored-answer note: Scored by fast typical runtime combined with poor predictability.
 
 ### Obs. 2.3 — Which style carries the strongest absolute tail-risk profile?
@@ -155,8 +155,8 @@
 ### Obs. 4.4 — Which styles remain strongly trigger-conditioned in success behavior?
 
 - Released answer: `Third-Party and Custom`
-- Latest Layer 1 status: `Failed`
+- Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
-- Validation note: Trigger-conditioned spread gap=0.3188; stored='Custom', winner='Third-Party'. Scored by the largest trigger-conditioned success-rate spread.
+- Validation note: Trigger-conditioned spread gap=0.3188; stored='Third-Party', winner='Third-Party'. Scored by the largest trigger-conditioned success-rate spread.
 - Favored-answer note: Scored by the largest trigger-conditioned success-rate spread.
