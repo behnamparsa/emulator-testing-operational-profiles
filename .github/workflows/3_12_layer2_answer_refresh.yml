@@ -2,10 +2,12 @@ name: Layer 2 Answer Refresh (Deprecated)
 
 on:
   workflow_dispatch:
-  workflow_call:
 
 jobs:
-  deprecated:
+  retired:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Layer 2 is deprecated. The single-layer flow now validates and refreshes directly in workflow 3_11."
+      - name: Notice
+        run: |
+          echo "Layer 2 has been retired."
+          echo "Use 3_00_profile_refresh_orchestrator.yml, which now runs Layer 1 and regeneration only."
