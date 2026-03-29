@@ -1,40 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List
-import pandas as pd
-
-from .io_utils import read_csv_rows, write_csv_rows, snapshot_tag
-from .item_logic import evaluate_item
 
 
+def run_layer2(*args, **kwargs) -> None:
+    raise RuntimeError(
+        "Layer 2 has been removed from the analytical flow. "
+        "Use profile_qa.layer1_validate.run_layer1() to validate and refresh the active answer."
+    )
 
-def run_layer2(refreshed_catalog_csv: Path, main_dataset_csv: Path, out_csv: Path, snapshot: str | None = None) -> Path:
-    tag = snapshot_tag(snapshot, main_dataset_csv)
-    target_col = f"L1_target_answer_{tag}"
-    validate_col = f"L1_validate_{tag}"
-    answer_col = f"L2_answer_{tag}"
-    note_col = f"L2_note_{tag}"
-    used_col = f"L2_used_{tag}"
 
-    rows: List[Dict[str, str]] = read_csv_rows(refreshed_catalog_csv)
-    df = pd.read_csv(main_dataset_csv)
-
-    for row in rows:
-        for redundant in ["released_observation_text", "source_section", "source_paper_path", "test_scope", "primary_metric", "primary_metrics", "statistical_test_plan"]:
-            row.pop(redundant, None)
-        target_answer = str(row.get(target_col, "") or row.get("released_answer", "")).strip()
-        l1_status = str(row.get(validate_col, "")).strip()
-        if l1_status == "Passed":
-            row[used_col] = "No"
-            row[answer_col] = target_answer
-            row[note_col] = f"Layer 1 passed; retained stored answer '{target_answer}'."
-            continue
-
-        eval_result = evaluate_item(str(row.get("obs_id", "")), str(row.get("question", "")), df)
-        row[used_col] = "Yes"
-        row[answer_col] = eval_result.winner
-        row[note_col] = eval_result.note
-
-    write_csv_rows(out_csv, rows)
-    return out_csv
+if __name__ == "__main__":
+    run_layer2(Path())

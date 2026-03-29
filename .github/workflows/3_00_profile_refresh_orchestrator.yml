@@ -19,14 +19,7 @@ jobs:
       snapshot_tag: ${{ inputs.snapshot_tag }}
     secrets: inherit
 
-  layer2:
-    needs: layer1
-    uses: ./.github/workflows/3_12_layer2_answer_refresh.yml
-    with:
-      snapshot_tag: ${{ inputs.snapshot_tag }}
-    secrets: inherit
-
   regenerate:
-    needs: layer2
+    needs: layer1
     uses: ./.github/workflows/3_13_profile_rule_regeneration.yml
     secrets: inherit

@@ -1,12 +1,12 @@
 # Decision-support guide (profile-derived)
 
-The table below keeps the paper baseline recommendation and appends the latest single recommended style for each objective.
+The table below preserves the paper baseline recommendation and appends a single updated recommendation from the latest refreshed catalog.
 
 |Primary objective|Paper baseline|Latest snapshot recommendation|
 |---|---|---|
-|Predictable feedback|GMD|GMD|
-|Fast first signal|GMD|GMD|
-|Fastest typical end-to-end completion|Community|Community|
-|Usable and successful run outcomes|GMD|GMD|
-|Overhead-placement-led optimization|GMD|GMD|
+|Predictable feedback||GMD|
+|Fast first signal||GMD|
+|Fastest typical end-to-end completion||Community|
+|Usable and successful run outcomes||GMD|
+|Overhead-placement-led optimization||GMD|
 

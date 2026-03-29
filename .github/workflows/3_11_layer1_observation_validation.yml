@@ -1,4 +1,4 @@
-name: Layer 1 Observation Validation
+name: Layer 1 Observation Validation and Refresh
 
 on:
   workflow_dispatch:
@@ -43,13 +43,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Layer 1 validation
+      - name: Run single-layer validation and refresh
         env:
           SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
         run: |
           PYTHONPATH=. python scripts/run_layer1_validation.py
 
-      - name: Commit Layer 1 output
+      - name: Commit refreshed catalog
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -59,11 +59,11 @@ jobs:
           git add outputs/catalog/observation_qa_catalog_refreshed.csv
 
           if git diff --cached --quiet; then
-            echo "No Layer 1 state changes to commit."
+            echo "No refreshed-catalog changes to commit."
             exit 0
           fi
 
-          git commit -m "Layer 1 observation validation"
+          git commit -m "Layer 1 validation and refresh"
 
           pushed=0
           for i in 1 2 3; do

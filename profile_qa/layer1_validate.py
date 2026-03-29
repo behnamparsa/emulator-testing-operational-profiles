@@ -1,86 +1,99 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List
-import csv
+from typing import Dict, List, Tuple
 import os
 
 import pandas as pd
 
-from .io_utils import snapshot_tag
+from .io_utils import read_csv_rows, write_csv_rows, snapshot_tag
 from .item_logic import validate_stored_answer
 
 
-def read_csv_rows(path: Path) -> List[Dict[str, str]]:
-    with path.open("r", encoding="utf-8", newline="") as f:
-        return list(csv.DictReader(f))
+REFRESHED_CATALOG = Path("outputs/catalog/observation_qa_catalog_refreshed.csv")
+BASE_CATALOG = Path("outputs/catalog/observation_qa_catalog.csv")
+MAIN_DATASET = Path("data/processed/MainDataset.csv")
 
 
-
-def write_csv_rows(path: Path, rows: List[Dict[str, str]]) -> None:
-    if not rows:
-        raise RuntimeError(f"No rows to write: {path}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = []
-    seen = set()
-    for row in rows:
-        for key in row.keys():
-            if key not in seen:
-                seen.add(key)
-                fieldnames.append(key)
-    with path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(row)
+def _latest_column(prefix: str, fieldnames: List[str]) -> str | None:
+    matches = [c for c in fieldnames if c.startswith(prefix)]
+    return sorted(matches)[-1] if matches else None
 
 
+def _source_catalog(path_hint: Path | None = None) -> Path:
+    if path_hint and path_hint.exists():
+        return path_hint
+    if REFRESHED_CATALOG.exists():
+        return REFRESHED_CATALOG
+    return BASE_CATALOG
 
-def _latest_active_answer(row: Dict[str, str], current_tag: str) -> str:
-    candidates = []
-    for key, value in row.items():
-        value_text = str(value or "").strip()
-        if key.startswith("L2_answer_") and value_text and not key.endswith(current_tag):
-            candidates.append((key, value_text))
-    for key, value_text in sorted(candidates, reverse=True):
-        if value_text.lower() not in {"conditional", "insufficient evidence", "", "n/a"}:
-            return value_text
-    return str(row.get("released_answer", "") or "").strip()
 
+def _stored_answer_for_row(row: Dict[str, str], fieldnames: List[str]) -> Tuple[str, str]:
+    latest_active = _latest_column("ACTIVE_", fieldnames)
+    if latest_active and str(row.get(latest_active, "")).strip():
+        return str(row.get(latest_active, "")).strip(), latest_active
+
+    latest_l2 = _latest_column("L2_answer_", fieldnames)
+    if latest_l2 and str(row.get(latest_l2, "")).strip():
+        return str(row.get(latest_l2, "")).strip(), latest_l2
+
+    return str(row.get("released_answer", "")).strip(), "released_answer"
+
+
+DROP_PREFIXES = ("L2_used_", "L2_answer_", "L2_note_", "L2_runner_up_")
+
+
+def _clean_row(row: Dict[str, str]) -> Dict[str, str]:
+    return {k: v for k, v in row.items() if not any(k.startswith(prefix) for prefix in DROP_PREFIXES)}
 
 
 def run_layer1(
-    catalog_csv: Path = Path("outputs/catalog/observation_qa_catalog.csv"),
-    main_dataset_csv: Path = Path("data/processed/MainDataset.csv"),
-    out_csv: Path = Path("outputs/catalog/observation_qa_catalog_refreshed.csv"),
-    snapshot_tag_value: str | None = None,
+    catalog_csv: Path | None = None,
+    main_dataset_csv: Path = MAIN_DATASET,
+    out_csv: Path = REFRESHED_CATALOG,
+    snapshot: str | None = None,
 ) -> None:
-    rows: List[Dict[str, str]] = read_csv_rows(catalog_csv)
+    source_csv = _source_catalog(catalog_csv)
+    rows: List[Dict[str, str]] = read_csv_rows(source_csv)
     if not rows:
-        raise RuntimeError(f"No rows found in catalog: {catalog_csv}")
+        raise RuntimeError(f"No rows found in source catalog: {source_csv}")
 
     df = pd.read_csv(main_dataset_csv)
+    tag = snapshot_tag(snapshot or os.getenv("SNAPSHOT_TAG", ""), dataset_path=main_dataset_csv)
 
-    suffix = snapshot_tag(snapshot_tag_value or os.getenv("SNAPSHOT_TAG", ""), main_dataset_csv)
-    target_col = f"L1_target_answer_{suffix}"
-    validate_col = f"L1_validate_{suffix}"
-    note_col = f"L1_note_{suffix}"
+    target_col = f"L1_target_answer_{tag}"
+    validate_col = f"L1_validate_{tag}"
+    note_col = f"L1_note_{tag}"
+    favored_col = f"L1_favored_answer_{tag}"
+    favored_note_col = f"L1_favored_note_{tag}"
+    active_col = f"ACTIVE_{tag}"
 
+    fieldnames = list(rows[0].keys())
     out_rows: List[Dict[str, str]] = []
-    for row in rows:
-        row_out = dict(row)
-        target_answer = _latest_active_answer(row_out, suffix)
-        status, note, _ = validate_stored_answer(row_out, df, target_answer)
-        for redundant in ["released_observation_text", "source_section", "source_paper_path", "test_scope", "primary_metric", "primary_metrics", "statistical_test_plan"]:
-            row_out.pop(redundant, None)
-        row_out[target_col] = target_answer
-        row_out[validate_col] = status
-        row_out[note_col] = note
-        out_rows.append(row_out)
+    for raw_row in rows:
+        row = _clean_row(dict(raw_row))
+        stored_answer, stored_from = _stored_answer_for_row(raw_row, fieldnames)
+        status, note, eval_result = validate_stored_answer(raw_row, df, stored_answer)
+        favored_answer = str(eval_result.winner or "").strip()
+        favored_note = str(eval_result.note or "").strip()
+        active_answer = stored_answer if status == "Passed" else favored_answer
+
+        row[target_col] = stored_answer
+        row[validate_col] = status
+        row[note_col] = note
+        row[favored_col] = favored_answer
+        row[favored_note_col] = favored_note
+        row[active_col] = active_answer
+        if stored_from and stored_from != "released_answer":
+            row[f"L1_target_source_{tag}"] = stored_from
+        out_rows.append(row)
 
     write_csv_rows(out_csv, out_rows)
-    print(f"Wrote Layer 1 state catalog to: {out_csv}")
-    print(f"Added columns: {target_col}, {validate_col}, {note_col}")
+    print(f"Wrote refreshed catalog with single-layer validation/update to: {out_csv}")
+    print(
+        "Added columns: "
+        f"{target_col}, {validate_col}, {note_col}, {favored_col}, {favored_note_col}, {active_col}"
+    )
 
 
 if __name__ == "__main__":

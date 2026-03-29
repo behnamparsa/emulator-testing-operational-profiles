@@ -10,12 +10,10 @@ from profile_qa.layer1_validate import run_layer1
 
 
 if __name__ == "__main__":
-    baseline = Path("outputs/catalog/observation_qa_catalog_refreshed.csv")
-    if not baseline.exists():
-        baseline = Path("outputs/catalog/observation_qa_catalog.csv")
     run_layer1(
-        catalog_csv=baseline,
+        catalog_csv=Path("outputs/catalog/observation_qa_catalog_refreshed.csv") if Path("outputs/catalog/observation_qa_catalog_refreshed.csv").exists() else Path("outputs/catalog/observation_qa_catalog.csv"),
         main_dataset_csv=Path("data/processed/MainDataset.csv"),
         out_csv=Path("outputs/catalog/observation_qa_catalog_refreshed.csv"),
-        snapshot_tag_value=os.getenv("SNAPSHOT_TAG", ""),
+        snapshot=os.getenv("SNAPSHOT_TAG", ""),
     )
+    print("outputs/catalog/observation_qa_catalog_refreshed.csv")

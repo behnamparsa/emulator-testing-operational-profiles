@@ -1,6 +1,6 @@
 # Decision-support rules (regenerated)
 
-## RQ1 - Speed profiling
+## RQ1 — Speed profiling
 
 ### 1.1 - Which style is the fastest overall operational profile?
 
@@ -27,7 +27,7 @@
 - Question: Which style combines a fast core execution profile with a longer residual tail?
 - Recommended current answer: **GMD**
 
-## RQ2 - Predictability and tail risk
+## RQ2 — Predictability and tail risk
 
 ### 2.1 - Which style is the most predictable on the main completion-oriented measures?
 
@@ -49,7 +49,7 @@
 - Question: Which style shows a mixed predictability profile that should be interpreted cautiously?
 - Recommended current answer: **Custom**
 
-## RQ3 - Overhead composition and actionable levers
+## RQ3 — Overhead composition and actionable levers
 
 ### 3.1 - Which style is the clearest execution-centric overhead profile?
 
@@ -71,7 +71,7 @@
 - Question: Which style remains a cautious tail-heavy mixed overhead case?
 - Recommended current answer: **Custom**
 
-## RQ4 - Deployment context and run-level verdict usability
+## RQ4 — Deployment context and run-level verdict usability
 
 ### 4.1 - Which style currently has the strongest usable run-level verdict rate?
 

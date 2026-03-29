@@ -399,15 +399,19 @@ def validate_stored_answer(row: Dict[str, str], df: pd.DataFrame, stored_answer:
             return "Insufficient evidence", "Not enough style/event diversity for chi-square validation.", result
         chi2, p, _, _ = chi2_contingency(table)
         v = _cramers_v_from_table(table, chi2)
+        favored = "Yes" if (p < ALPHA and v >= MIN_CRAMERS_V) else "No"
+        result = EvalResult(favored, result.note, result.score_by_style, result.validation_metric, result.lower_is_better, result.categorical_mode)
         current = norm(stored_answer).lower() in {"yes", "true"}
-        fail = (not current) or (p < ALPHA and v >= MIN_CRAMERS_V)
+        fail = (current and favored == "No") or ((not current) and favored == "Yes")
         status = "Failed" if fail else "Passed"
-        note = f"Chi-square on style × {trigger_col}: p={p:.3g}, Cramer's V={v:.3f}; stored answer='{stored_answer}'."
+        note = f"Chi-square on style × {trigger_col}: p={p:.3g}, Cramer's V={v:.3f}; stored answer='{stored_answer}', favored='{favored}'."
         return status, note, result
 
     if not stored_styles:
         stored_styles = [norm(stored_answer)] if norm(stored_answer) else []
     current_style = stored_styles[0] if stored_styles else ""
+    if stored_styles and len(stored_styles) > 1 and result.winner in stored_styles:
+        return "Passed", f"Stored multi-style answer '{stored_answer}' still contains current favored style '{result.winner}'. {result.note}", result
     if current_style not in STYLE_SET:
         return "Insufficient evidence", f"Stored answer '{stored_answer}' is not a recognized single-style target.", result
 
