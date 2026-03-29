@@ -18,7 +18,7 @@
     "question": "Which style shows the clearest fast-entry profile without being the fastest overall finisher?",
     "released_answer": "GMD",
     "latest_layer1_status": "Passed",
-    "latest_favored_answer": "GMD",
+    "latest_favored_answer": "Community",
     "current_answer": "GMD"
   },
   {
@@ -39,7 +39,7 @@
     "obs_number": "1.4",
     "question": "Which style shows a mixed speed profile with competitive entry, middling core path, and a long completion tail?",
     "released_answer": "Custom",
-    "latest_layer1_status": "Failed",
+    "latest_layer1_status": "Passed",
     "latest_favored_answer": "GMD",
     "current_answer": "GMD"
   },
@@ -50,7 +50,7 @@
     "obs_number": "1.5",
     "question": "Which style combines a fast core execution profile with a longer residual tail?",
     "released_answer": "Community",
-    "latest_layer1_status": "Failed",
+    "latest_layer1_status": "Passed",
     "latest_favored_answer": "GMD",
     "current_answer": "GMD"
   },
@@ -72,7 +72,7 @@
     "obs_number": "2.2",
     "question": "Which style is fast in typical terms but predictability-poor?",
     "released_answer": "Community",
-    "latest_layer1_status": "Failed",
+    "latest_layer1_status": "Passed",
     "latest_favored_answer": "Third-Party",
     "current_answer": "Third-Party"
   },
@@ -117,7 +117,7 @@
     "question": "Which style is best characterized by heavy entry plus heavy execution rather than a dominant completion tail?",
     "released_answer": "Third-Party",
     "latest_layer1_status": "Passed",
-    "latest_favored_answer": "Third-Party",
+    "latest_favored_answer": "GMD",
     "current_answer": "Third-Party"
   },
   {
@@ -128,7 +128,7 @@
     "question": "Which style has a distributed overhead profile rather than a single dominant overhead source?",
     "released_answer": "Community",
     "latest_layer1_status": "Passed",
-    "latest_favored_answer": "Community",
+    "latest_favored_answer": "Custom",
     "current_answer": "Community"
   },
   {
@@ -171,7 +171,7 @@
     "obs_number": "4.3",
     "question": "Do the styles remain deployed in markedly different CI trigger contexts?",
     "released_answer": "Yes",
-    "latest_layer1_status": "Failed",
+    "latest_layer1_status": "Passed",
     "latest_favored_answer": "Yes",
     "current_answer": "Yes"
   },
@@ -182,7 +182,7 @@
     "obs_number": "4.4",
     "question": "Which styles remain strongly trigger-conditioned in success behavior?",
     "released_answer": "Third-Party and Custom",
-    "latest_layer1_status": "Failed",
+    "latest_layer1_status": "Passed",
     "latest_favored_answer": "Third-Party",
     "current_answer": "Third-Party"
   }

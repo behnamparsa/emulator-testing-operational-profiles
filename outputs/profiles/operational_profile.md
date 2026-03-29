@@ -13,7 +13,7 @@
 
 - Released answer: **GMD**
 - Latest Layer 1 status: **Passed**
-- Statistically favored answer: **GMD**
+- Statistically favored answer: **Community**
 - Current active answer: **GMD**
 
 ### 1.3 - Which style is the slowest sustained-execution profile?
@@ -26,14 +26,14 @@
 ### 1.4 - Which style shows a mixed speed profile with competitive entry, middling core path, and a long completion tail?
 
 - Released answer: **Custom**
-- Latest Layer 1 status: **Failed**
+- Latest Layer 1 status: **Passed**
 - Statistically favored answer: **GMD**
 - Current active answer: **GMD**
 
 ### 1.5 - Which style combines a fast core execution profile with a longer residual tail?
 
 - Released answer: **Community**
-- Latest Layer 1 status: **Failed**
+- Latest Layer 1 status: **Passed**
 - Statistically favored answer: **GMD**
 - Current active answer: **GMD**
 
@@ -49,7 +49,7 @@
 ### 2.2 - Which style is fast in typical terms but predictability-poor?
 
 - Released answer: **Community**
-- Latest Layer 1 status: **Failed**
+- Latest Layer 1 status: **Passed**
 - Statistically favored answer: **Third-Party**
 - Current active answer: **Third-Party**
 
@@ -80,14 +80,14 @@
 
 - Released answer: **Third-Party**
 - Latest Layer 1 status: **Passed**
-- Statistically favored answer: **Third-Party**
+- Statistically favored answer: **GMD**
 - Current active answer: **Third-Party**
 
 ### 3.3 - Which style has a distributed overhead profile rather than a single dominant overhead source?
 
 - Released answer: **Community**
 - Latest Layer 1 status: **Passed**
-- Statistically favored answer: **Community**
+- Statistically favored answer: **Custom**
 - Current active answer: **Community**
 
 ### 3.4 - Which style remains a cautious tail-heavy mixed overhead case?
@@ -116,14 +116,14 @@
 ### 4.3 - Do the styles remain deployed in markedly different CI trigger contexts?
 
 - Released answer: **Yes**
-- Latest Layer 1 status: **Failed**
+- Latest Layer 1 status: **Passed**
 - Statistically favored answer: **Yes**
 - Current active answer: **Yes**
 
 ### 4.4 - Which styles remain strongly trigger-conditioned in success behavior?
 
 - Released answer: **Third-Party and Custom**
-- Latest Layer 1 status: **Failed**
+- Latest Layer 1 status: **Passed**
 - Statistically favored answer: **Third-Party**
 - Current active answer: **Third-Party**
 
