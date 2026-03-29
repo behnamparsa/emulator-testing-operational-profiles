@@ -21,7 +21,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Sync latest main after Layer 2
+      - name: Sync latest main after Layer 1
         run: |
           git pull --rebase origin main
 
