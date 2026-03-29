@@ -1,9 +1,0 @@
-# Decision-support guide table
-
-|objective|paper_recommendation|ACTIVE_2026_03_27|
-|---|---|---|
-|Predictable feedback|GMD|GMD|
-|Fast first signal|GMD|GMD|
-|Fastest typical end-to-end completion|Community|Community|
-|Usable and successful run outcomes|GMD|GMD|
-|Overhead-placement-led optimization|GMD|GMD|
