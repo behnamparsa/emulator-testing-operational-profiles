@@ -1,20 +1,8 @@
-name: Layer 1 Observation Validation
+name: Profile and Rule Regeneration
 
 on:
   workflow_dispatch:
-    inputs:
-      snapshot_tag:
-        description: Optional snapshot tag override
-        required: false
-        default: ''
-        type: string
-
   workflow_call:
-    inputs:
-      snapshot_tag:
-        required: false
-        default: ''
-        type: string
 
 permissions:
   contents: write
@@ -24,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
+  regenerate:
     runs-on: ubuntu-latest
 
     steps:
@@ -32,6 +20,10 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: Sync latest main after Layer 1
+        run: |
+          git pull --rebase origin main
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -43,32 +35,36 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Layer 1 validation and update
-        env:
-          SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
+      - name: Run profile and rule regeneration
         run: |
-          PYTHONPATH=. python scripts/run_layer1_validation.py
+          PYTHONPATH=. python scripts/run_profile_regeneration.py
 
-      - name: Remove obsolete validated catalog if present
-        run: |
-          rm -f outputs/catalog/observation_qa_catalog_validated.csv
-
-      - name: Commit refreshed catalog
+      - name: Commit regenerated outputs
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add outputs/catalog/observation_qa_catalog_refreshed.csv
-          git add -u outputs/catalog/observation_qa_catalog_validated.csv || true
+          git add \
+            outputs/profiles/operational_profile.md \
+            outputs/profiles/operational_profile.json \
+            outputs/profiles/operational_profile_table.md \
+            outputs/profiles/operational_profile_table.csv \
+            outputs/profiles/operational_profile_narrative.md \
+            outputs/rules/decision_support_rules.md \
+            outputs/rules/decision_support_rules.json \
+            outputs/rules/decision_support_guide.md \
+            outputs/rules/decision_support_guide_table.csv \
+            outputs/rules/decision_support_guide_table.md \
+            outputs/reports/latest_refresh_report.md
 
           if git diff --cached --quiet; then
-            echo "No refreshed-catalog changes to commit."
+            echo "No regenerated-output changes to commit."
             exit 0
           fi
 
-          git commit -m "Layer 1 validation/update refresh"
+          git commit -m "Regenerate profile and rules"
 
           pushed=0
           for i in 1 2 3; do

@@ -38,7 +38,7 @@ def _obs_number(row: Dict[str, str]) -> str:
     if val:
         return val
     obs_id = _norm(row.get("obs_id", ""))
-    return obs_id.replace("Obs. ", "").strip()
+    return obs_id.replace("Obs.", "").strip()
 
 
 def _strip_leading_obs_number(text: str) -> str:
@@ -91,7 +91,7 @@ def _style_cell(style: str, current_answers: Dict[str, str]) -> Dict[str, str]:
         if ans("Obs. 1.2").lower() == "gmd":
             speed_parts.append("Clearest fast-entry profile")
         if ans("Obs. 1.1").lower() == "gmd":
-            speed_parts.append("fastest overall completion")
+            speed_parts.append("Fastest overall completion")
         if not speed_parts:
             speed_parts.append("Stable but not always fastest end-to-end")
         speed = "; ".join(speed_parts)
@@ -135,24 +135,15 @@ def _build_current_answer_map(rows: List[Dict[str, str]], latest_active: str | N
 
 
 def _update_decision_support_table(guide_table_csv: Path, snapshot_col: str, current_answers: Dict[str, str]) -> List[Dict[str, str]]:
-    if guide_table_csv.exists():
-        existing = _read_csv_rows(guide_table_csv)
-        by_obj = {row["objective"]: row for row in existing}
-        rows = []
-        for rule in PAPER_BASELINE_RULES:
-            row = by_obj.get(rule["objective"], {"objective": rule["objective"], "paper_recommendation": rule["paper_recommendation"]})
-            row[snapshot_col] = _norm(current_answers.get(rule["basis_obs"], "")) or rule["paper_recommendation"]
-            rows.append(row)
-    else:
-        rows = []
-        for rule in PAPER_BASELINE_RULES:
-            rows.append(
-                {
-                    "objective": rule["objective"],
-                    "paper_recommendation": rule["paper_recommendation"],
-                    snapshot_col: _norm(current_answers.get(rule["basis_obs"], "")) or rule["paper_recommendation"],
-                }
-            )
+    rows: List[Dict[str, str]] = []
+    for rule in PAPER_BASELINE_RULES:
+        rows.append(
+            {
+                "objective": rule["objective"],
+                "paper_recommendation": rule["paper_recommendation"],
+                snapshot_col: _norm(current_answers.get(rule["basis_obs"], "")) or rule["paper_recommendation"],
+            }
+        )
     _write_csv_rows(guide_table_csv, rows)
     return rows
 
@@ -191,13 +182,13 @@ def _make_decision_support_guide_md(guide_rows: List[Dict[str, str]]) -> str:
     lines = [
         "# Decision-support guide (profile-derived)",
         "",
-        "The table below preserves the paper baseline recommendation and appends a single updated recommendation from the latest refreshed catalog.",
+        "The table below preserves the paper baseline recommendation and appends a single updated recommendation from the latest active answer in the refreshed catalog.",
         "",
         "|Primary objective|Paper baseline|Latest snapshot recommendation|",
         "|---|---|---|",
     ]
     for row in guide_rows:
-        baseline = _norm(row.get('paper_recommendation',''))
+        baseline = _norm(row.get("paper_recommendation", ""))
         latest = _norm(row.get(latest_snapshot_col, ""))
         lines.append(f"|{_norm(row.get('objective',''))}|{baseline}|{latest}|")
     lines.append("")
@@ -217,11 +208,11 @@ def _make_narrative_md(current_answers: Dict[str, str]) -> str:
     lines = [
         "# Operational performance profile summary (regenerated)",
         "",
-        f"**{fastest}** is currently the best-supported answer for the fastest overall operational profile question.",
-        f"**{fast_entry}** remains the clearest fast-entry style, while **{slow_exec}** remains the clearest slow sustained-execution profile.",
-        f"On predictability, **{predict}** remains the strongest predictability-first profile.",
-        f"For overhead composition, **{distributed}** remains the distributed-overhead case, **{heavy_entry_exec}** remains the heavy-entry plus heavy-execution case, and **{tail_heavy}** remains the tail-heavy mixed case.",
-        f"For practice-facing outcome context, **{usable}** remains the strongest answer for usable-verdict rate, and **{success}** remains the strongest answer for success among usable outcomes.",
+        f"**{fastest}** is the current active answer for the fastest overall operational profile question.",
+        f"**{fast_entry}** is the current active answer for the fast-entry profile question, while **{slow_exec}** remains the clearest slow sustained-execution profile.",
+        f"On predictability, **{predict}** is the current active predictability-first profile.",
+        f"For overhead composition, **{distributed}** is the distributed-overhead case, **{heavy_entry_exec}** is the heavy-entry plus heavy-execution case, and **{tail_heavy}** is the tail-heavy mixed case.",
+        f"For practice-facing outcomes, **{usable}** is the strongest current active answer for usable-verdict rate, and **{success}** is the strongest current active answer for success among usable outcomes.",
         "",
     ]
     return "\n".join(lines)
@@ -246,117 +237,82 @@ def regenerate_from_catalog(
         raise RuntimeError(f"No rows found in refreshed catalog: {refreshed_catalog_csv}")
 
     fieldnames = list(rows[0].keys())
-    latest_l1 = _latest_column("L1_validate_", fieldnames)
     latest_active = _latest_column("ACTIVE_", fieldnames)
+    latest_validate = _latest_column("L1_validate_", fieldnames)
     latest_favored = _latest_column("L1_favored_answer_", fieldnames)
-
-    for path in [
-        profile_md, profile_json, rules_md, rules_json, refresh_report_md,
-        profile_table_md, profile_table_csv, profile_narrative_md,
-        decision_guide_md, decision_guide_table_csv, decision_guide_table_md,
-    ]:
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-    profile_lines = ["# Operational profile (regenerated)", ""]
-    profile_data = []
-    rules_lines = ["# Decision-support rules (regenerated)", ""]
-    rules_data = []
-    report_lines = ["# Latest refresh report", ""]
-
+    snapshot_col = latest_active or latest_validate or "latest_snapshot"
     current_answers = _build_current_answer_map(rows, latest_active)
-    current_rq_heading: str | None = None
 
-    for row in rows:
-        question = _norm(row.get("question", ""))
-        released_answer = _norm(row.get("released_answer", ""))
-        l1_value = _norm(row.get(latest_l1, "")) if latest_l1 else ""
-        favored_value = _norm(row.get(latest_favored, "")) if latest_favored else ""
-        current_answer = _norm(row.get(latest_active, "")) if latest_active else released_answer
+    profile_table_rows = [_style_cell(style, current_answers) for style in ["Community", "Custom", "GMD", "Third-Party"]]
+    _write_csv_rows(profile_table_csv, profile_table_rows)
+    profile_table_md.write_text(_make_profile_table_md(profile_table_rows), encoding="utf-8")
+    profile_narrative_md.write_text(_make_narrative_md(current_answers), encoding="utf-8")
 
-        rq_heading = _rq_heading(row)
-        obs_number = _obs_number(row)
-        obs_question = _obs_question(row)
-
-        if rq_heading != current_rq_heading:
-            profile_lines.extend([f"## {rq_heading}", ""])
-            rules_lines.extend([f"## {rq_heading}", ""])
-            current_rq_heading = rq_heading
-
-        obs_heading = f"{obs_number} - {obs_question}" if obs_number and obs_question else obs_question or _norm(row.get("obs_id", ""))
-
-        profile_lines.extend([
-            f"### {obs_heading}", "",
-            f"- Released answer: **{released_answer or 'N/A'}**",
-            f"- Latest Layer 1 status: **{l1_value or 'N/A'}**",
-            f"- Statistically favored answer: **{favored_value or 'N/A'}**",
-            f"- Current active answer: **{current_answer or 'N/A'}**", "",
-        ])
-
-        profile_data.append({
-            "rq_id": _norm(row.get("rq_id", "")),
-            "rq_title": _norm(row.get("rq_title", "")),
-            "obs_id": _norm(row.get("obs_id", "")),
-            "obs_number": obs_number,
-            "question": question,
-            "released_answer": released_answer,
-            "latest_layer1_status": l1_value,
-            "latest_favored_answer": favored_value,
-            "current_answer": current_answer,
-        })
-
-        rules_lines.extend([
-            f"### {obs_heading}", "",
-            f"- Question: {question or obs_question}",
-            f"- Recommended current answer: **{current_answer or 'N/A'}**", "",
-        ])
-
-        rules_data.append({
-            "rq_id": _norm(row.get("rq_id", "")),
-            "rq_title": _norm(row.get("rq_title", "")),
-            "obs_id": _norm(row.get("obs_id", "")),
-            "obs_number": obs_number,
-            "question": question,
-            "current_answer": current_answer,
-        })
-
-    styles = ["Community", "Custom", "GMD", "Third-Party"]
-    table_rows = [_style_cell(style, current_answers) for style in styles]
-
-    snapshot_col = latest_active.replace("ACTIVE_", "snapshot_") if latest_active else "snapshot_current"
     guide_rows = _update_decision_support_table(decision_guide_table_csv, snapshot_col, current_answers)
+    decision_guide_table_md.write_text(_make_guide_table_md(guide_rows), encoding="utf-8")
+    decision_guide_md.write_text(_make_decision_support_guide_md(guide_rows), encoding="utf-8")
 
-    report_lines.extend([
-        f"- Source catalog: `{refreshed_catalog_csv}`",
-        f"- Latest Layer 1 column: `{latest_l1 or 'N/A'}`",
-        f"- Latest favored-answer column: `{latest_favored or 'N/A'}`",
-        f"- Latest active-answer column: `{latest_active or 'N/A'}`",
-        f"- Total observations: **{len(rows)}**",
-        f"- Generated compact profile table: `{profile_table_md}`",
-        f"- Generated decision guide: `{decision_guide_md}`",
-        f"- Generated decision guide table: `{decision_guide_table_csv}`",
+    profile_sections = ["# Refreshed operational profile", ""]
+    current_rq = None
+    for row in rows:
+        rq = _rq_heading(row)
+        if rq != current_rq:
+            profile_sections.append(f"## {rq}")
+            profile_sections.append("")
+            current_rq = rq
+        profile_sections.append(f"### Obs. {_obs_number(row)} — {_obs_question(row)}")
+        profile_sections.append("")
+        profile_sections.append(f"- Released answer: `{_norm(row.get('released_answer', ''))}`")
+        if latest_validate:
+            profile_sections.append(f"- Latest Layer 1 status: `{_norm(row.get(latest_validate, ''))}`")
+        if latest_favored:
+            profile_sections.append(f"- Statistically favored answer: `{_norm(row.get(latest_favored, ''))}`")
+        if latest_active:
+            profile_sections.append(f"- Current active answer: `{_norm(row.get(latest_active, ''))}`")
+        note_col = _latest_column("L1_note_", fieldnames)
+        favored_note_col = _latest_column("L1_favored_note_", fieldnames)
+        if note_col:
+            profile_sections.append(f"- Validation note: {_norm(row.get(note_col, ''))}")
+        if favored_note_col:
+            profile_sections.append(f"- Favored-answer note: {_norm(row.get(favored_note_col, ''))}")
+        profile_sections.append("")
+    profile_md.write_text("\n".join(profile_sections), encoding="utf-8")
+
+    profile_json.write_text(json.dumps({"profile_table": profile_table_rows, "observations": rows}, indent=2), encoding="utf-8")
+
+    rules_md.write_text(
+        "# Decision-support rules\n\n"
+        "These rules are derived from the latest active answers in the refreshed observation catalog.\n\n"
+        + decision_guide_md.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    rules_json.write_text(json.dumps({"rules": guide_rows}, indent=2), encoding="utf-8")
+
+    report_lines = [
+        "# Latest refresh report",
         "",
-    ])
-
-    profile_md.write_text("\n".join(profile_lines) + "\n", encoding="utf-8")
-    profile_json.write_text(json.dumps(profile_data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    rules_md.write_text("\n".join(rules_lines) + "\n", encoding="utf-8")
-    rules_json.write_text(json.dumps(rules_data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    refresh_report_md.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
-
-    profile_table_md.write_text(_make_profile_table_md(table_rows) + "\n", encoding="utf-8")
-    profile_narrative_md.write_text(_make_narrative_md(current_answers) + "\n", encoding="utf-8")
-    decision_guide_table_md.write_text(_make_guide_table_md(guide_rows) + "\n", encoding="utf-8")
-    decision_guide_md.write_text(_make_decision_support_guide_md(guide_rows) + "\n", encoding="utf-8")
-
-    with profile_table_csv.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=["Style", "Speed profile", "Predictability", "Overhead source & lever", "Verdict & deployment"],
-        )
-        writer.writeheader()
-        for row in table_rows:
-            writer.writerow(row)
-
-
-if __name__ == "__main__":
-    regenerate_from_catalog()
+        "This report is generated from the single-layer refreshed catalog.",
+        f"Latest active-answer column: `{latest_active or 'N/A'}`",
+        f"Latest validation column: `{latest_validate or 'N/A'}`",
+        f"Latest favored-answer column: `{latest_favored or 'N/A'}`",
+        "",
+        "## Snapshot-level summary",
+        "",
+    ]
+    passed = 0
+    failed = 0
+    for row in rows:
+        status = _norm(row.get(latest_validate, "")) if latest_validate else ""
+        if status == "Passed":
+            passed += 1
+        elif status == "Failed":
+            failed += 1
+    report_lines.append(f"- Passed observations: {passed}")
+    report_lines.append(f"- Failed observations: {failed}")
+    report_lines.append("")
+    report_lines.append("## Active answers")
+    report_lines.append("")
+    for row in rows:
+        report_lines.append(f"- {_norm(row.get('obs_id',''))}: `{_norm(row.get(latest_active, ''))}`")
+    report_lines.append("")
+    refresh_report_md.write_text("\n".join(report_lines), encoding="utf-8")

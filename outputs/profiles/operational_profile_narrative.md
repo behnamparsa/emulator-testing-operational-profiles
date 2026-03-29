@@ -1,8 +1,7 @@
 # Operational performance profile summary (regenerated)
 
-**Community** is currently the best-supported answer for the fastest overall operational profile question.
-**GMD** remains the clearest fast-entry style, while **Third-Party** remains the clearest slow sustained-execution profile.
-On predictability, **GMD** remains the strongest predictability-first profile.
-For overhead composition, **Community** remains the distributed-overhead case, **Third-Party** remains the heavy-entry plus heavy-execution case, and **Custom** remains the tail-heavy mixed case.
-For practice-facing outcome context, **GMD** remains the strongest answer for usable-verdict rate, and **GMD** remains the strongest answer for success among usable outcomes.
-
+**Community** is the current active answer for the fastest overall operational profile question.
+**GMD** is the current active answer for the fast-entry profile question, while **Third-Party** remains the clearest slow sustained-execution profile.
+On predictability, **GMD** is the current active predictability-first profile.
+For overhead composition, **Community** is the distributed-overhead case, **Third-Party** is the heavy-entry plus heavy-execution case, and **Custom** is the tail-heavy mixed case.
+For practice-facing outcomes, **GMD** is the strongest current active answer for usable-verdict rate, and **GMD** is the strongest current active answer for success among usable outcomes.
