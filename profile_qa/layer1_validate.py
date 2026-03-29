@@ -13,13 +13,6 @@ REFRESHED_CATALOG = Path("outputs/catalog/observation_qa_catalog_refreshed.csv")
 BASE_CATALOG = Path("outputs/catalog/observation_qa_catalog.csv")
 MAIN_DATASET = Path("data/processed/MainDataset.csv")
 
-DROP_PREFIXES = (
-    "L2_used_",
-    "L2_answer_",
-    "L2_note_",
-    "L2_runner_up_",
-)
-
 
 def _latest_column(prefix: str, fieldnames: List[str]) -> str | None:
     matches = [c for c in fieldnames if c.startswith(prefix)]
