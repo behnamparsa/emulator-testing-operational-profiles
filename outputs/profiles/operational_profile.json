@@ -198,9 +198,22 @@
     "obs_number": "4.4",
     "question": "Which styles remain strongly trigger-conditioned in success behavior?",
     "released_answer": "Third-Party and Custom",
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> 60171f0709520c501f15dc9d53f6aaa811fc4b9f
     "latest_layer1_target": "Third-Party and Custom",
     "latest_layer1_status": "Failed",
     "current_answer": "Third-Party",
     "latest_layer2_used": "Yes"
+<<<<<<< HEAD
+=======
+=======
+    "latest_layer1_target": "Third-Party",
+    "latest_layer1_status": "Passed",
+    "current_answer": "Third-Party",
+    "latest_layer2_used": "No"
+>>>>>>> bdbb4671bb11383b148a4bdec0e9019fca11d952
+>>>>>>> 60171f0709520c501f15dc9d53f6aaa811fc4b9f
   }
 ]

@@ -61,7 +61,15 @@ def run_layer1(
 
     df = pd.read_csv(main_dataset_csv)
 
+<<<<<<< HEAD
     suffix = snapshot_tag(snapshot_tag_value or os.getenv("SNAPSHOT_TAG", ""), main_dataset_csv)
+=======
+<<<<<<< HEAD
+    suffix = snapshot_tag(snapshot_tag_value or os.getenv("SNAPSHOT_TAG", ""), main_dataset_csv)
+=======
+    suffix = snapshot_tag(snapshot_tag_value or os.getenv("SNAPSHOT_TAG", ""))
+>>>>>>> bdbb4671bb11383b148a4bdec0e9019fca11d952
+>>>>>>> 60171f0709520c501f15dc9d53f6aaa811fc4b9f
     target_col = f"L1_target_answer_{suffix}"
     validate_col = f"L1_validate_{suffix}"
     note_col = f"L1_note_{suffix}"
