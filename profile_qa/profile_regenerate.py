@@ -222,7 +222,6 @@ def regenerate_from_catalog(
     refreshed_catalog_csv: Path = Path("outputs/catalog/observation_qa_catalog_refreshed.csv"),
     profile_md: Path = Path("outputs/profiles/operational_profile.md"),
     profile_json: Path = Path("outputs/profiles/operational_profile.json"),
-    rules_md: Path = Path("outputs/rules/decision_support_rules.md"),
     rules_json: Path = Path("outputs/rules/decision_support_rules.json"),
     refresh_report_md: Path = Path("outputs/reports/latest_refresh_report.md"),
     profile_table_md: Path = Path("outputs/profiles/operational_profile_table.md"),
@@ -230,11 +229,23 @@ def regenerate_from_catalog(
     profile_narrative_md: Path = Path("outputs/profiles/operational_profile_narrative.md"),
     decision_guide_md: Path = Path("outputs/rules/decision_support_guide.md"),
     decision_guide_table_csv: Path = Path("outputs/rules/decision_support_guide_table.csv"),
-    decision_guide_table_md: Path = Path("outputs/rules/decision_support_guide_table.md"),
 ) -> None:
     rows = _read_csv_rows(refreshed_catalog_csv)
     if not rows:
         raise RuntimeError(f"No rows found in refreshed catalog: {refreshed_catalog_csv}")
+
+    for path in [
+        profile_md,
+        profile_json,
+        rules_json,
+        refresh_report_md,
+        profile_table_md,
+        profile_table_csv,
+        profile_narrative_md,
+        decision_guide_md,
+        decision_guide_table_csv,
+    ]:
+        path.parent.mkdir(parents=True, exist_ok=True)
 
     fieldnames = list(rows[0].keys())
     latest_active = _latest_column("ACTIVE_", fieldnames)
@@ -243,50 +254,67 @@ def regenerate_from_catalog(
     snapshot_col = latest_active or latest_validate or "latest_snapshot"
     current_answers = _build_current_answer_map(rows, latest_active)
 
-    profile_table_rows = [_style_cell(style, current_answers) for style in ["Community", "Custom", "GMD", "Third-Party"]]
+    profile_table_rows = [
+        _style_cell(style, current_answers)
+        for style in ["Community", "Custom", "GMD", "Third-Party"]
+    ]
     _write_csv_rows(profile_table_csv, profile_table_rows)
     profile_table_md.write_text(_make_profile_table_md(profile_table_rows), encoding="utf-8")
     profile_narrative_md.write_text(_make_narrative_md(current_answers), encoding="utf-8")
 
-    guide_rows = _update_decision_support_table(decision_guide_table_csv, snapshot_col, current_answers)
-    decision_guide_table_md.write_text(_make_guide_table_md(guide_rows), encoding="utf-8")
+    guide_rows = _update_decision_support_table(
+        decision_guide_table_csv,
+        snapshot_col,
+        current_answers,
+    )
     decision_guide_md.write_text(_make_decision_support_guide_md(guide_rows), encoding="utf-8")
 
     profile_sections = ["# Refreshed operational profile", ""]
     current_rq = None
+    note_col = _latest_column("L1_note_", fieldnames)
+    favored_note_col = _latest_column("L1_favored_note_", fieldnames)
+
     for row in rows:
         rq = _rq_heading(row)
         if rq != current_rq:
             profile_sections.append(f"## {rq}")
             profile_sections.append("")
             current_rq = rq
+
         profile_sections.append(f"### Obs. {_obs_number(row)} — {_obs_question(row)}")
         profile_sections.append("")
         profile_sections.append(f"- Released answer: `{_norm(row.get('released_answer', ''))}`")
+
         if latest_validate:
             profile_sections.append(f"- Latest Layer 1 status: `{_norm(row.get(latest_validate, ''))}`")
         if latest_favored:
             profile_sections.append(f"- Statistically favored answer: `{_norm(row.get(latest_favored, ''))}`")
         if latest_active:
             profile_sections.append(f"- Current active answer: `{_norm(row.get(latest_active, ''))}`")
-        note_col = _latest_column("L1_note_", fieldnames)
-        favored_note_col = _latest_column("L1_favored_note_", fieldnames)
         if note_col:
             profile_sections.append(f"- Validation note: {_norm(row.get(note_col, ''))}")
         if favored_note_col:
             profile_sections.append(f"- Favored-answer note: {_norm(row.get(favored_note_col, ''))}")
+
         profile_sections.append("")
+
     profile_md.write_text("\n".join(profile_sections), encoding="utf-8")
 
-    profile_json.write_text(json.dumps({"profile_table": profile_table_rows, "observations": rows}, indent=2), encoding="utf-8")
-
-    rules_md.write_text(
-        "# Decision-support rules\n\n"
-        "These rules are derived from the latest active answers in the refreshed observation catalog.\n\n"
-        + decision_guide_md.read_text(encoding="utf-8"),
+    profile_json.write_text(
+        json.dumps(
+            {
+                "profile_table": profile_table_rows,
+                "observations": rows,
+            },
+            indent=2,
+        ),
         encoding="utf-8",
     )
-    rules_json.write_text(json.dumps({"rules": guide_rows}, indent=2), encoding="utf-8")
+
+    rules_json.write_text(
+        json.dumps({"rules": guide_rows}, indent=2),
+        encoding="utf-8",
+    )
 
     report_lines = [
         "# Latest refresh report",
@@ -299,6 +327,7 @@ def regenerate_from_catalog(
         "## Snapshot-level summary",
         "",
     ]
+
     passed = 0
     failed = 0
     for row in rows:
@@ -307,12 +336,15 @@ def regenerate_from_catalog(
             passed += 1
         elif status == "Failed":
             failed += 1
+
     report_lines.append(f"- Passed observations: {passed}")
     report_lines.append(f"- Failed observations: {failed}")
     report_lines.append("")
     report_lines.append("## Active answers")
     report_lines.append("")
+
     for row in rows:
-        report_lines.append(f"- {_norm(row.get('obs_id',''))}: `{_norm(row.get(latest_active, ''))}`")
+        report_lines.append(f"- {_norm(row.get('obs_id', ''))}: `{_norm(row.get(latest_active, ''))}`")
+
     report_lines.append("")
     refresh_report_md.write_text("\n".join(report_lines), encoding="utf-8")
