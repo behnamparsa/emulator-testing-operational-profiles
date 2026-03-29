@@ -7,8 +7,8 @@ Latest favored-answer column: `L1_favored_answer_2026_03_27`
 
 ## Snapshot-level summary
 
-- Passed observations: 12
-- Failed observations: 5
+- Passed observations: 17
+- Failed observations: 0
 
 ## Active answers
 
