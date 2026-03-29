@@ -139,27 +139,8 @@
 ### 4.4 - Which styles remain strongly trigger-conditioned in success behavior?
 
 - Released answer: **Third-Party and Custom**
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 60171f0709520c501f15dc9d53f6aaa811fc4b9f
->>>>>>> 8facab844a5d2b233e3ccf38e6172fecda81f057
 - Layer 1 validated answer: **Third-Party and Custom**
 - Latest Layer 1 status: **Failed**
 - Current answer: **Third-Party**
 - Layer 2 used: **Yes**
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-=======
-=======
-- Layer 1 validated answer: **Third-Party**
-- Latest Layer 1 status: **Passed**
-- Current answer: **Third-Party**
-- Layer 2 used: **No**
->>>>>>> bdbb4671bb11383b148a4bdec0e9019fca11d952
->>>>>>> 60171f0709520c501f15dc9d53f6aaa811fc4b9f
->>>>>>> 8facab844a5d2b233e3ccf38e6172fecda81f057
 

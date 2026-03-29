@@ -10,19 +10,7 @@ from .item_logic import evaluate_item
 
 
 def run_layer2(validated_catalog_csv: Path, main_dataset_csv: Path, out_csv: Path, snapshot: str | None = None) -> Path:
-<<<<<<< HEAD
     tag = snapshot_tag(snapshot, main_dataset_csv)
-=======
-<<<<<<< HEAD
-    tag = snapshot_tag(snapshot, main_dataset_csv)
-=======
-<<<<<<< HEAD
-    tag = snapshot_tag(snapshot, main_dataset_csv)
-=======
-    tag = snapshot_tag(snapshot)
->>>>>>> bdbb4671bb11383b148a4bdec0e9019fca11d952
->>>>>>> 60171f0709520c501f15dc9d53f6aaa811fc4b9f
->>>>>>> 8facab844a5d2b233e3ccf38e6172fecda81f057
     target_col = f"L1_target_answer_{tag}"
     validate_col = f"L1_validate_{tag}"
     answer_col = f"L2_answer_{tag}"
