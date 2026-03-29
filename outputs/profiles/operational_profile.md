@@ -26,14 +26,14 @@
 ### 1.4 - Which style shows a mixed speed profile with competitive entry, middling core path, and a long completion tail?
 
 - Released answer: **Custom**
-- Latest Layer 1 status: **Passed**
+- Latest Layer 1 status: **Failed**
 - Statistically favored answer: **GMD**
 - Current active answer: **GMD**
 
 ### 1.5 - Which style combines a fast core execution profile with a longer residual tail?
 
 - Released answer: **Community**
-- Latest Layer 1 status: **Passed**
+- Latest Layer 1 status: **Failed**
 - Statistically favored answer: **GMD**
 - Current active answer: **GMD**
 
@@ -49,7 +49,7 @@
 ### 2.2 - Which style is fast in typical terms but predictability-poor?
 
 - Released answer: **Community**
-- Latest Layer 1 status: **Passed**
+- Latest Layer 1 status: **Failed**
 - Statistically favored answer: **Third-Party**
 - Current active answer: **Third-Party**
 
@@ -125,5 +125,5 @@
 - Released answer: **Third-Party and Custom**
 - Latest Layer 1 status: **Passed**
 - Statistically favored answer: **Third-Party**
-- Current active answer: **Third-Party**
+- Current active answer: **Third-Party and Custom**
 

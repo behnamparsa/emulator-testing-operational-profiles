@@ -39,7 +39,7 @@
     "obs_number": "1.4",
     "question": "Which style shows a mixed speed profile with competitive entry, middling core path, and a long completion tail?",
     "released_answer": "Custom",
-    "latest_layer1_status": "Passed",
+    "latest_layer1_status": "Failed",
     "latest_favored_answer": "GMD",
     "current_answer": "GMD"
   },
@@ -50,7 +50,7 @@
     "obs_number": "1.5",
     "question": "Which style combines a fast core execution profile with a longer residual tail?",
     "released_answer": "Community",
-    "latest_layer1_status": "Passed",
+    "latest_layer1_status": "Failed",
     "latest_favored_answer": "GMD",
     "current_answer": "GMD"
   },
@@ -72,7 +72,7 @@
     "obs_number": "2.2",
     "question": "Which style is fast in typical terms but predictability-poor?",
     "released_answer": "Community",
-    "latest_layer1_status": "Passed",
+    "latest_layer1_status": "Failed",
     "latest_favored_answer": "Third-Party",
     "current_answer": "Third-Party"
   },
@@ -184,6 +184,6 @@
     "released_answer": "Third-Party and Custom",
     "latest_layer1_status": "Passed",
     "latest_favored_answer": "Third-Party",
-    "current_answer": "Third-Party"
+    "current_answer": "Third-Party and Custom"
   }
 ]
