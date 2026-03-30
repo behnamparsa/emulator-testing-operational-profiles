@@ -1,4 +1,4 @@
-name: 9_00 scheduled_master_refresh
+name: 000_Master_Orchestrator_Scheduleder_MainPiplines_Refresh
 
 on:
   workflow_dispatch:
