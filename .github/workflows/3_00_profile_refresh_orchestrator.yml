@@ -1,7 +1,4 @@
 name: 000_2_Analytical_Pipeline_Main_Orchestrator
-run-name: >-
-  000_2_Analytical_Pipeline_Main_Orchestrator${{
-  inputs.dispatch_token && format(' [{0}]', inputs.dispatch_token) || '' }}
 
 on:
   workflow_dispatch:
@@ -9,13 +6,11 @@ on:
       snapshot_tag:
         description: Optional snapshot tag override
         required: false
-        default: ''
-        type: string
+        default: ""
       dispatch_token:
-        description: Optional unique token from the scheduled master orchestrator
+        description: Optional master-orchestrator token
         required: false
-        default: ''
-        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -30,4 +25,9 @@ jobs:
   regenerate:
     needs: layer1
     uses: ./.github/workflows/3_12_profile_rule_regeneration.yml
+    secrets: inherit
+
+  robustness_check:
+    needs: regenerate
+    uses: ./.github/workflows/3_13_robustness_check.yml
     secrets: inherit

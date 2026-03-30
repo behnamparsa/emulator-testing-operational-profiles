@@ -1,0 +1,9 @@
+obs_id,current_reference_answer,tier1_exact_signature_support,tier2_coarsened_family_support,robustness_status,note
+Obs. 1.1,Community,Yes,Yes,supported,Current answer style(s) are present in qualifying Tier 1 exact-signature overlap and Tier 2 coarsened-family overlap.
+Obs. 1.2,GMD,Yes,Yes,supported,Current answer style(s) are present in qualifying Tier 1 exact-signature overlap and Tier 2 coarsened-family overlap.
+Obs. 1.3,Third-Party,Yes,Yes,supported,Current answer style(s) are present in qualifying Tier 1 exact-signature overlap and Tier 2 coarsened-family overlap.
+Obs. 2.1,GMD,Yes,Yes,supported,Current answer style(s) are present in qualifying Tier 1 exact-signature overlap and Tier 2 coarsened-family overlap.
+Obs. 3.1,GMD,Yes,Yes,supported,Current answer style(s) are present in qualifying Tier 1 exact-signature overlap and Tier 2 coarsened-family overlap.
+Obs. 3.2,Third-Party,Yes,Yes,supported,Current answer style(s) are present in qualifying Tier 1 exact-signature overlap and Tier 2 coarsened-family overlap.
+Obs. 4.2,GMD,Yes,Yes,supported,Current answer style(s) are present in qualifying Tier 1 exact-signature overlap and Tier 2 coarsened-family overlap.
+Obs. 4.3,Yes,Yes,Yes,supported,Cross-style trigger-context distinctness is structurally checkable only where multiple styles overlap within qualifying exact signatures and coarsened families.
