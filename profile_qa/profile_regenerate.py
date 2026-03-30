@@ -486,17 +486,70 @@ def _make_decision_support_rule_structure_md() -> str:
         "",
         "This file documents the structural logic used by the repo to refresh the five decision-support rules.",
         "",
+        "Priority notation used below:",
+        "- `A` = primary recommendation source",
+        "- `A > B` = use `A` first; use `B` only if `A` is unavailable",
+        "- `A + B (support)` = `A` determines the recommendation; `B` is supporting context for interpretation",
+        "- `A > B + C (support)` = use `A` first, then `B` as fallback; use `C` only as supporting context",
+        "",
     ]
+
+    structures = {
+        "predictable_feedback": {
+            "priority": "**Obs. 2.1 + Obs. 2.2 (support)**",
+            "primary": "**Obs. 2.1**",
+            "fallback": "",
+            "support": "**Obs. 2.2**",
+            "latest_rule_text": "Use the current active answer from **Obs. 2.1** as the latest recommendation. Use **Obs. 2.2** only to explain the speed-versus-variability trade-off; it does not override the recommendation on its own.",
+        },
+        "fast_first_signal": {
+            "priority": "**Obs. 1.2**",
+            "primary": "**Obs. 1.2**",
+            "fallback": "",
+            "support": "",
+            "latest_rule_text": "Use the current active answer from **Obs. 1.2**.",
+        },
+        "fastest_typical_completion": {
+            "priority": "**Obs. 1.1**",
+            "primary": "**Obs. 1.1**",
+            "fallback": "",
+            "support": "",
+            "latest_rule_text": "Use the current active answer from **Obs. 1.1**.",
+        },
+        "usable_successful_outcomes": {
+            "priority": "**Obs. 4.2 > Obs. 4.1 + Obs. 4.4 (support)**",
+            "primary": "**Obs. 4.2**",
+            "fallback": "**Obs. 4.1**",
+            "support": "**Obs. 4.4**",
+            "latest_rule_text": "Prefer the current active answer from **Obs. 4.2**. If **Obs. 4.2** is unavailable, use **Obs. 4.1** as the fallback recommendation source. Use **Obs. 4.4** only as supporting context to describe trigger-conditioned reliability issues; it does not override the recommendation on its own.",
+        },
+        "overhead_led_optimization": {
+            "priority": "**Obs. 3.1 > Obs. 3.2 > Obs. 3.3 > Obs. 3.4**",
+            "primary": "**Obs. 3.1**",
+            "fallback": "**Obs. 3.2**, then **Obs. 3.3**, then **Obs. 3.4**",
+            "support": "",
+            "latest_rule_text": "Use the first non-empty current active answer in this order: **Obs. 3.1**, then **Obs. 3.2**, then **Obs. 3.3**, then **Obs. 3.4**. Earlier observations in the sequence have higher priority than later ones.",
+        },
+    }
+
     for rule in RULE_OBJECTIVES:
+        s = structures[rule["rule_id"]]
         lines.append(f"## {rule['objective']}")
         lines.append("")
-        lines.append(f"- Basis observations: {', '.join(rule['basis_obs'])}")
+        lines.append(f"- Priority structure: {s['priority']}")
+        lines.append(f"- Primary recommendation source: {s['primary']}")
+        if s["fallback"]:
+            lines.append(f"- Fallback recommendation source{'s' if ', then ' in s['fallback'] else ''}: {s['fallback']}")
+        if s["support"]:
+            lines.append(f"- Supporting context: {s['support']}")
         lines.append(f"- Paper rationale: {rule['paper_rationale']}")
-        lines.append(f"- Latest recommendation rule: {rule['latest_rule']}")
-        lines.append("- Bottleneck detection rule: detect the current bottleneck label for the latest recommended style using the rule-aware bottleneck mapper.")
-        lines.append("- Guidance lookup rule: use the first matching guidance row in the order (rule, style, bottleneck) → (*, style, bottleneck) → (rule, style, *) → (*, style, *).")
+        lines.append(f"- Latest recommendation rule: {s['latest_rule_text']}")
+        lines.append("- Bottleneck detection rule: Detect the current bottleneck label for the latest recommended style using the rule-aware bottleneck mapper.")
+        lines.append("- Guidance lookup rule: Use the first matching guidance row in the order `(rule, style, bottleneck)` → `(*, style, bottleneck)` → `(rule, style, *)` → `(*, style, *)`.")
         lines.append("")
+
     return "\n".join(lines)
+
 
 
 def regenerate_from_catalog(
