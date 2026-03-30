@@ -23,5 +23,6 @@ if __name__ == "__main__":
         validation_notes_md=Path("outputs/reports/observation_validation_notes.md"),
         measurement_structure_md=Path("outputs/reports/observation_measurement_structure.md"),
         coverage_snapshot_md=Path("outputs/reports/coverage_snapshot.md"),
+        rule_structure_md=Path("outputs/reports/decision_support_rule_structure.md"),
         main_dataset_csv=Path("data/processed/MainDataset.csv"),
     )

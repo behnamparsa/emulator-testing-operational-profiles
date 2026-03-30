@@ -38,22 +38,22 @@
 ### Obs. 1.4 — Which style shows a mixed speed profile with competitive entry, middling core path, and a long completion tail?
 
 - Paper baseline answer: `Custom`
-- Current baseline under validation: `Custom`
+- Current baseline under validation: `GMD`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Custom`
-- Current active answer: `Custom`
-- Validation interpretation: Current data still supports Custom as the answer for this observation.
+- Current active answer: `GMD`
+- Validation interpretation: Current data shows Custom as the nominally favored answer, but the evidence was not strong enough to replace the current answer GMD.
 - Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 1.5 — Which style combines a fast core execution profile with a longer residual tail?
 
 - Paper baseline answer: `Community`
-- Current baseline under validation: `Community`
+- Current baseline under validation: `GMD`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Community`
-- Current active answer: `Community`
-- Validation interpretation: Current data still supports Community as the answer for this observation.
+- Current active answer: `GMD`
+- Validation interpretation: Current data shows Community as the nominally favored answer, but the evidence was not strong enough to replace the current answer GMD.
 - Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
@@ -99,7 +99,7 @@
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Community`
 - Current active answer: `Custom`
-- Validation interpretation: Current data shows Community as the nominally favored answer, but the evidence was not strong enough to replace the current baseline under validation Custom.
+- Validation interpretation: Current data shows Community as the nominally favored answer, but the evidence was not strong enough to replace the current answer Custom.
 - Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
@@ -130,11 +130,11 @@
 ### Obs. 3.3 — Which style has a distributed overhead profile rather than a single dominant overhead source?
 
 - Paper baseline answer: `Community`
-- Current baseline under validation: `Community`
+- Current baseline under validation: `Custom`
 - Latest Layer 1 status: `Insufficient evidence`
 - Statistically favored answer: `Custom`
-- Current active answer: `Community`
-- Validation interpretation: Current data was not sufficient to overturn the current baseline under validation Community, so the active answer remains unchanged.
+- Current active answer: `Custom`
+- Validation interpretation: Current data was not sufficient to confirm or replace the previous answer.
 - Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
@@ -187,10 +187,10 @@
 ### Obs. 4.4 — Which styles remain strongly trigger-conditioned in success behavior?
 
 - Paper baseline answer: `Third-Party and Custom`
-- Current baseline under validation: `Third-Party and Custom`
-- Latest Layer 1 status: `Failed`
+- Current baseline under validation: `Third-Party`
+- Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
-- Validation interpretation: Current data no longer supported the current baseline under validation Third-Party and Custom; the answer was updated to Third-Party.
+- Validation interpretation: Current data still supports Third-Party as the answer for this observation.
 - Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.

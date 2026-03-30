@@ -23,12 +23,8 @@ DROP_PREFIXES = (
     "L1_target_source_",
 )
 
-
-def _latest_column(prefix: str, fieldnames: List[str], exclude_suffix: str | None = None) -> str | None:
+def _latest_column(prefix: str, fieldnames: List[str]) -> str | None:
     matches = [c for c in fieldnames if c.startswith(prefix)]
-    if exclude_suffix:
-        suffix = f"_{exclude_suffix}"
-        matches = [c for c in matches if not c.endswith(suffix)]
     return sorted(matches)[-1] if matches else None
 
 
@@ -40,13 +36,8 @@ def _source_catalog(path_hint: Path | None = None) -> Path:
     return BASE_CATALOG
 
 
-def _stored_answer_for_row(row: Dict[str, str], fieldnames: List[str], current_tag: str) -> Tuple[str, str]:
-    """Use the latest ACTIVE_* from an older snapshot only.
-
-    If no older ACTIVE_* exists, fall back to released_answer so the first
-    stable refreshed snapshot is validated against the paper baseline.
-    """
-    latest_active = _latest_column("ACTIVE_", fieldnames, exclude_suffix=current_tag)
+def _stored_answer_for_row(row: Dict[str, str], fieldnames: List[str]) -> Tuple[str, str]:
+    latest_active = _latest_column("ACTIVE_", fieldnames)
     if latest_active and str(row.get(latest_active, "")).strip():
         return str(row.get(latest_active, "")).strip(), latest_active
     return str(row.get("released_answer", "")).strip(), "released_answer"
@@ -80,13 +71,15 @@ def run_layer1(
 
     fieldnames = list(rows[0].keys())
     out_rows: List[Dict[str, str]] = []
+
     for raw_row in rows:
         row = _clean_row(dict(raw_row))
-        stored_answer, stored_from = _stored_answer_for_row(raw_row, fieldnames, tag)
+        stored_answer, stored_from = _stored_answer_for_row(raw_row, fieldnames)
         status, note, eval_result = validate_stored_answer(raw_row, df, stored_answer)
+
         favored_answer = str(eval_result.winner or "").strip()
         favored_note = str(eval_result.note or "").strip()
-        active_answer = stored_answer if status in {"Passed", "Insufficient evidence"} else favored_answer
+        active_answer = stored_answer if status == "Passed" else favored_answer
 
         row[target_col] = stored_answer
         row[validate_col] = status

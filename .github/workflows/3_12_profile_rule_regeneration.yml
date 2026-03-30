@@ -58,6 +58,7 @@ jobs:
             outputs/reports/latest_refresh_report.md \
             outputs/reports/observation_measurement_structure.md \
             outputs/reports/coverage_snapshot.md \
+            outputs/reports/decision_support_rule_structure.md \
             outputs/reports/observation_validation_notes.md
 
           git rm -f --ignore-unmatch \

@@ -31,20 +31,20 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 1.4 — Which style shows a mixed speed profile with competitive entry, middling core path, and a long completion tail?
 
-- Current baseline under validation: `Custom`
+- Current baseline under validation: `GMD`
 - Validation status: `Passed`
 - Favored answer: `Custom`
-- Active answer: `Custom`
-- Validation note: Kruskal on study_post_invocation_selected_stage3_seconds: p=1.13e-71, epsilon^2=0.056; vs Community: p_adj=0.00767, rbc=0.241, vs GMD: p_adj=2.27e-13, rbc=0.802, vs Third-Party: p_adj=6.45e-08, rbc=0.599. stored='Custom', winner='Custom'. Fail only when winner changes with significant omnibus + pairwise support and meaningful effect size.
+- Active answer: `GMD`
+- Validation note: Kruskal on study_post_invocation_selected_stage3_seconds: p=1.13e-71, epsilon^2=0.056; vs Custom: p_adj=1, rbc=-0.802, vs Community: p_adj=1, rbc=-0.721, vs Third-Party: p_adj=1, rbc=-0.040. stored='GMD', winner='Custom'. Fail only when winner changes with significant omnibus + pairwise support and meaningful effect size.
 - Favored-answer note: Primary measurement: study_post_invocation_selected_stage3_seconds; winner = highest median completion-tail metric.
 
 ## Obs. 1.5 — Which style combines a fast core execution profile with a longer residual tail?
 
-- Current baseline under validation: `Community`
+- Current baseline under validation: `GMD`
 - Validation status: `Passed`
 - Favored answer: `Community`
-- Active answer: `Community`
-- Validation note: Kruskal on study_post_invocation_selected_stage3_seconds: p=1.54e-71, epsilon^2=0.055; vs GMD: p_adj=7.33e-50, rbc=0.721, vs Third-Party: p_adj=9.75e-27, rbc=0.560. stored='Community', winner='Community'. Fail only when winner changes with significant omnibus + pairwise support and meaningful effect size.
+- Active answer: `GMD`
+- Validation note: Kruskal on study_post_invocation_selected_stage3_seconds: p=1.54e-71, epsilon^2=0.055; vs Community: p_adj=1, rbc=-0.721, vs Third-Party: p_adj=1, rbc=-0.040. stored='GMD', winner='Community'. Fail only when winner changes with significant omnibus + pairwise support and meaningful effect size.
 - Favored-answer note: Primary measurement: study_post_invocation_selected_stage3_seconds; winner = highest median tail metric within the fast-core candidate set.
 
 ## Obs. 2.1 — Which style is the most predictable on the main completion-oriented measures?
@@ -103,10 +103,10 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 3.3 — Which style has a distributed overhead profile rather than a single dominant overhead source?
 
-- Current baseline under validation: `Community`
+- Current baseline under validation: `Custom`
 - Validation status: `Insufficient evidence`
 - Favored answer: `Custom`
-- Active answer: `Community`
+- Active answer: `Custom`
 - Validation note: No usable values for validation metric 'max_phase_share'.
 - Favored-answer note: Primary measurement: max_phase_share; winner = lowest median maximum phase share.
 
@@ -148,9 +148,9 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 4.4 — Which styles remain strongly trigger-conditioned in success behavior?
 
-- Current baseline under validation: `Third-Party and Custom`
-- Validation status: `Failed`
+- Current baseline under validation: `Third-Party`
+- Validation status: `Passed`
 - Favored answer: `Third-Party`
 - Active answer: `Third-Party`
-- Validation note: Trigger-conditioned spread gap=0.3188; stored='Custom', winner='Third-Party'. Primary measurement: trigger-conditioned success-rate spread; winner = largest spread.
+- Validation note: Trigger-conditioned spread gap=0.3188; stored='Third-Party', winner='Third-Party'. Primary measurement: trigger-conditioned success-rate spread; winner = largest spread.
 - Favored-answer note: Primary measurement: trigger-conditioned success-rate spread; winner = largest spread.

@@ -119,13 +119,50 @@ def _style_cell(style: str, current_answers: Dict[str, str]) -> Dict[str, str]:
     }
 
 
-PAPER_BASELINE_RULES = [
-    {"objective": "Predictable feedback", "paper_recommendation": "GMD", "basis_obs": "Obs. 2.1"},
-    {"objective": "Fast first signal", "paper_recommendation": "GMD", "basis_obs": "Obs. 1.2"},
-    {"objective": "Fastest typical end-to-end completion", "paper_recommendation": "Community", "basis_obs": "Obs. 1.1"},
-    {"objective": "Usable and successful run outcomes", "paper_recommendation": "GMD", "basis_obs": "Obs. 4.2"},
-    {"objective": "Overhead-placement-led optimization", "paper_recommendation": "GMD", "basis_obs": "Obs. 3.1"},
+RULE_OBJECTIVES = [
+    {
+        "objective": "Predictable feedback",
+        "paper_recommendation": "GMD",
+        "basis_obs": ["Obs. 2.1", "Obs. 2.2"],
+        "paper_rationale": "The paper’s predictability-first guide prefers the style with the tightest dispersion and lightest relative tails on the main completion-oriented measures.",
+        "latest_recommendation_rule": "Use the current active answer from Obs. 2.1 as the primary recommendation; use Obs. 2.2 as the structural trade-off note showing which fast style remains predictability-poor.",
+        "fallback_note": "If GMD is not feasible, Community remains the practical fallback but should be treated as higher tail-risk.",
+    },
+    {
+        "objective": "Fast first signal",
+        "paper_recommendation": "GMD",
+        "basis_obs": ["Obs. 1.2"],
+        "paper_rationale": "The paper’s guide prefers the clearest fast-entry style when early developer feedback is the main objective.",
+        "latest_recommendation_rule": "Use the current active answer from Obs. 1.2, which flattens the fast-entry profile to the repo’s normalized entry measurement.",
+        "fallback_note": "If the recommended fast-entry style is not feasible, use Community as the practical fallback; do not choose Third-Party on early-feedback grounds alone.",
+    },
+    {
+        "objective": "Fastest typical end-to-end completion",
+        "paper_recommendation": "Community",
+        "basis_obs": ["Obs. 1.1"],
+        "paper_rationale": "The paper’s guide treats the fastest typical end-to-end completion objective as the headline overall-speed recommendation.",
+        "latest_recommendation_rule": "Use the current active answer from Obs. 1.1, which is the repo’s normalized overall-speed observation.",
+        "fallback_note": "If predictability matters almost as much as median speed and GMD is feasible, prefer GMD as the safer trade-off.",
+    },
+    {
+        "objective": "Usable and successful run outcomes",
+        "paper_recommendation": "GMD",
+        "basis_obs": ["Obs. 4.1", "Obs. 4.2"],
+        "paper_rationale": "The paper’s guide combines usable-verdict rate and success rate among usable outcomes when actionability of CI results is the main objective.",
+        "latest_recommendation_rule": "Use Obs. 4.2 as the decisive latest recommendation when Obs. 4.1 and Obs. 4.2 differ; otherwise keep their shared current active answer.",
+        "fallback_note": "Community remains the general-purpose fallback with broader practical coverage; treat Third-Party and Custom as trigger-sensitive.",
+    },
+    {
+        "objective": "Overhead-placement-led optimization",
+        "paper_recommendation": "GMD",
+        "basis_obs": ["Obs. 3.1", "Obs. 3.2", "Obs. 3.3", "Obs. 3.4"],
+        "paper_rationale": "The paper’s guide uses the overhead profile to map an optimization objective to the style whose dominant bottleneck best matches the intended intervention.",
+        "latest_recommendation_rule": "Use Obs. 3.1 as the primary recommendation for the execution-centric optimization case, and keep Obs. 3.2–3.4 as structural support for entry-heavy, distributed, and tail-heavy alternatives.",
+        "fallback_note": "If the local bottleneck is not execution-centric, consult the structural notes for Third-Party (entry + execution), Community (distributed), and Custom (tail-heavy) before applying the recommendation.",
+    },
 ]
+
+
 
 
 def _build_current_answer_map(rows: List[Dict[str, str]], latest_active: str | None) -> Dict[str, str]:
@@ -136,16 +173,73 @@ def _build_current_answer_map(rows: List[Dict[str, str]], latest_active: str | N
     return current_answers
 
 
-def _update_decision_support_table(guide_table_csv: Path, snapshot_col: str, current_answers: Dict[str, str]) -> List[Dict[str, str]]:
+def _rule_latest_recommendation(rule: Dict[str, str], current_answers: Dict[str, str]) -> str:
+    obs = rule["basis_obs"]
+    if rule["objective"] == "Usable and successful run outcomes":
+        a = _norm(current_answers.get("Obs. 4.1", ""))
+        b = _norm(current_answers.get("Obs. 4.2", ""))
+        return b or a or rule["paper_recommendation"]
+    return _norm(current_answers.get(obs[0], "")) or rule["paper_recommendation"]
+
+
+def _optimization_target_for_style(style: str) -> str:
+    style = _norm(style)
+    targets = {
+        "Community": "Stabilize entry/setup variability and reduce execution-path cost; then inspect the remaining residual tail.",
+        "GMD": "Optimize the execution path itself, including test efficiency, parallelization, flake reduction, and execution simplification.",
+        "Third-Party": "Reduce entry/provisioning delay and shorten provider-side execution cost; treat trigger policy separately.",
+        "Custom": "Reduce bespoke completion-tail work and standardize custom orchestration where feasible.",
+    }
+    return targets.get(style, "Inspect the dominant bottleneck indicated by the latest operational profile.")
+
+
+def _latest_rationale_for_rule(rule: Dict[str, str], latest_recommendation: str, current_answers: Dict[str, str]) -> str:
+    obj = rule["objective"]
+    if obj == "Predictable feedback":
+        tradeoff = _norm(current_answers.get("Obs. 2.2", ""))
+        if tradeoff:
+            return f"Latest recommendation comes from Obs. 2.1 (most predictable style). Obs. 2.2 still marks {tradeoff} as the fast-but-less-predictable trade-off."
+        return "Latest recommendation comes from Obs. 2.1, which captures the most predictable current style."
+    if obj == "Fast first signal":
+        return "Latest recommendation comes from Obs. 1.2, which captures the clearest fast-entry profile under the normalized entry metric."
+    if obj == "Fastest typical end-to-end completion":
+        return "Latest recommendation comes from Obs. 1.1, which captures the fastest overall operational profile on the repo’s normalized overall-speed metric."
+    if obj == "Usable and successful run outcomes":
+        a = _norm(current_answers.get("Obs. 4.1", ""))
+        b = _norm(current_answers.get("Obs. 4.2", ""))
+        if a and b and a != b:
+            return f"Latest recommendation primarily follows Obs. 4.2 ({b}) and is cross-checked against Obs. 4.1 ({a}) so success among usable outcomes remains the decisive factor."
+        return f"Latest recommendation is shared by Obs. 4.1 and Obs. 4.2, so {latest_recommendation} remains the strongest actionability-oriented choice."
+    if obj == "Overhead-placement-led optimization":
+        s32 = _norm(current_answers.get("Obs. 3.2", ""))
+        s33 = _norm(current_answers.get("Obs. 3.3", ""))
+        s34 = _norm(current_answers.get("Obs. 3.4", ""))
+        return f"Latest recommendation is anchored by Obs. 3.1 ({latest_recommendation}) for the execution-centric case, with structural support from Obs. 3.2 ({s32 or 'N/A'}), Obs. 3.3 ({s33 or 'N/A'}), and Obs. 3.4 ({s34 or 'N/A'})."
+    return "Latest recommendation follows the current active answer tied to the rule’s basis observation(s)."
+
+
+def _build_rule_rows(snapshot_col: str, current_answers: Dict[str, str]) -> List[Dict[str, str]]:
     rows: List[Dict[str, str]] = []
-    for rule in PAPER_BASELINE_RULES:
+    latest_key = "latest_snapshot_recommendation"
+    for rule in RULE_OBJECTIVES:
+        latest = _rule_latest_recommendation(rule, current_answers)
         rows.append(
             {
                 "objective": rule["objective"],
                 "paper_recommendation": rule["paper_recommendation"],
-                snapshot_col: _norm(current_answers.get(rule["basis_obs"], "")) or rule["paper_recommendation"],
+                latest_key: latest,
+                "paper_rationale": rule["paper_rationale"],
+                "latest_rationale": _latest_rationale_for_rule(rule, latest, current_answers),
+                "first_optimization_target": _optimization_target_for_style(latest),
+                "fallback_or_feasibility_note": rule["fallback_note"],
+                "basis_observations": ", ".join(rule["basis_obs"]),
             }
         )
+    return rows
+
+
+def _update_decision_support_table(guide_table_csv: Path, snapshot_col: str, current_answers: Dict[str, str]) -> List[Dict[str, str]]:
+    rows = _build_rule_rows(snapshot_col, current_answers)
     _write_csv_rows(guide_table_csv, rows)
     return rows
 
@@ -165,21 +259,49 @@ def _make_profile_table_md(table_rows: List[Dict[str, str]]) -> str:
 
 
 def _make_decision_support_guide_md(guide_rows: List[Dict[str, str]]) -> str:
-    headers = list(guide_rows[0].keys())
-    latest_snapshot_col = headers[-1]
     lines = [
         "# Decision-support guide (profile-derived)",
         "",
-        "The table below preserves the paper baseline recommendation and appends a single updated recommendation from the latest active answer in the refreshed catalog.",
+        "This guide preserves the paper baseline recommendation, appends the latest snapshot recommendation, and records the first optimization target and feasibility note behind each primary objective.",
         "",
-        "|Primary objective|Paper baseline|Latest snapshot recommendation|",
-        "|---|---|---|",
     ]
     for row in guide_rows:
-        baseline = _norm(row.get("paper_recommendation", ""))
-        latest = _norm(row.get(latest_snapshot_col, ""))
-        lines.append(f"|{_norm(row.get('objective',''))}|{baseline}|{latest}|")
-    lines.append("")
+        lines.extend([
+            f"## {row['objective']}",
+            "",
+            f"- Paper baseline recommendation: `{row['paper_recommendation']}`",
+            f"- Latest snapshot recommendation: `{row['latest_snapshot_recommendation']}`",
+            f"- Paper rationale: {row['paper_rationale']}",
+            f"- Latest rationale: {row['latest_rationale']}",
+            f"- First optimization target: {row['first_optimization_target']}",
+            f"- Fallback / feasibility note: {row['fallback_or_feasibility_note']}",
+            f"- Structural basis: {row['basis_observations']}",
+            "",
+        ])
+    return "\n".join(lines)
+
+
+def _make_rule_structure_md(guide_rows: List[Dict[str, str]]) -> str:
+    lines = [
+        "# Decision-support rule structure",
+        "",
+        "This file documents the structural logic behind each of the five primary decision-support objectives used by the repo.",
+        "",
+    ]
+    for row in guide_rows:
+        lines.extend([
+            f"## {row['objective']}",
+            "",
+            f"- Paper baseline recommendation: `{row['paper_recommendation']}`",
+            f"- Latest snapshot recommendation: `{row['latest_snapshot_recommendation']}`",
+            f"- Basis observations: {row['basis_observations']}",
+            f"- Paper rationale: {row['paper_rationale']}",
+            f"- Latest recommendation rule: {row['latest_rationale']}",
+            "- First optimization target rule: The repo maps the latest recommendation style to its profile-derived first optimization target.",
+            f"- Current first optimization target: {row['first_optimization_target']}",
+            f"- Fallback / feasibility note: {row['fallback_or_feasibility_note']}",
+            "",
+        ])
     return "\n".join(lines)
 
 
@@ -213,16 +335,14 @@ def _validation_interpretation(status: str, target: str, favored: str, active: s
     active = _norm(active)
     if status == "Passed":
         if favored and target and favored != target:
-            return f"Current data shows {favored} as the nominally favored answer, but the evidence was not strong enough to replace the current baseline under validation {target}."
+            return f"Current data shows {favored} as the nominally favored answer, but the evidence was not strong enough to replace the current answer {target}."
         return f"Current data still supports {active or target} as the answer for this observation."
     if status == "Failed":
         if active and favored and active == favored:
-            return f"Current data no longer supported the current baseline under validation {target}; the answer was updated to {active}."
-        return f"Current data no longer supported the current baseline under validation {target}."
+            return f"Current data no longer supported {target}; the answer was updated to {active}."
+        return f"Current data no longer supported the previous answer {target}."
     if status == "Insufficient evidence":
-        if target:
-            return f"Current data was not sufficient to overturn the current baseline under validation {target}, so the active answer remains unchanged."
-        return "Current data was not sufficient to confirm or replace the current baseline under validation."
+        return "Current data was not sufficient to confirm or replace the previous answer."
     return "Validation status requires manual interpretation."
 
 
@@ -362,6 +482,7 @@ def regenerate_from_catalog(
     validation_notes_md: Path = Path("outputs/reports/observation_validation_notes.md"),
     measurement_structure_md: Path = Path("outputs/reports/observation_measurement_structure.md"),
     coverage_snapshot_md: Path = Path("outputs/reports/coverage_snapshot.md"),
+    rule_structure_md: Path = Path("outputs/reports/decision_support_rule_structure.md"),
     main_dataset_csv: Path = Path("data/processed/MainDataset.csv"),
 ) -> None:
     rows = _read_csv_rows(refreshed_catalog_csv)
@@ -381,6 +502,7 @@ def regenerate_from_catalog(
         validation_notes_md,
         measurement_structure_md,
         coverage_snapshot_md,
+        rule_structure_md,
     ]:
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -401,6 +523,7 @@ def regenerate_from_catalog(
 
     guide_rows = _update_decision_support_table(decision_guide_table_csv, snapshot_col, current_answers)
     decision_guide_md.write_text(_make_decision_support_guide_md(guide_rows), encoding="utf-8")
+    rule_structure_md.write_text(_make_rule_structure_md(guide_rows), encoding="utf-8")
 
     logic_rows = []
     for row in rows:
@@ -488,5 +611,6 @@ def regenerate_from_catalog(
     report_lines.append("- Observation measurement structure: `outputs/reports/observation_measurement_structure.md`")
     report_lines.append("- Coverage snapshot: `outputs/reports/coverage_snapshot.md`")
     report_lines.append("- Technical validation notes: `outputs/reports/observation_validation_notes.md`")
+    report_lines.append("- Decision-support rule structure: `outputs/reports/decision_support_rule_structure.md`")
     report_lines.append("")
     refresh_report_md.write_text("\n".join(report_lines), encoding="utf-8")
