@@ -1,6 +1,6 @@
-name: Profile Refresh Orchestrator
+name: 000_Main_Orchestrator_Analytical_Pipeline
 run-name: >-
-  Profile Refresh Orchestrator${{
+  000_Main_Orchestrator_Analytical_Pipeline${{
   inputs.dispatch_token && format(' [{0}]', inputs.dispatch_token) || '' }}
 
 on:
