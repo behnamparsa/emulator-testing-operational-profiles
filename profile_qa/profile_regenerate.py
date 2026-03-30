@@ -465,8 +465,9 @@ def _make_decision_support_guide_md(rule_rows: List[Dict[str, str]]) -> str:
         "The guidance below preserves the paper baseline recommendation and appends a refreshed recommendation from the latest active answers, together with the currently detected bottleneck and the first improvement focus for that rule–style combination.",
         "",
     ]
+
     for row in rule_rows:
-        lines.append(f"## {row['objective']}")
+        lines.append(f"## If the primary objective is {row['objective'].lower()}")
         lines.append("")
         lines.append(f"- Paper baseline recommendation: **{row['paper_recommendation']}**")
         lines.append(f"- Latest snapshot recommendation: **{row['latest_snapshot_recommendation']}**")
@@ -475,6 +476,7 @@ def _make_decision_support_guide_md(rule_rows: List[Dict[str, str]]) -> str:
         lines.append(f"- First optimization target: **{row['first_optimization_target']}**")
         lines.append(f"- Improvement suggestion: {row['improvement_suggestion']}")
         lines.append("")
+
     return "\n".join(lines)
 
 
