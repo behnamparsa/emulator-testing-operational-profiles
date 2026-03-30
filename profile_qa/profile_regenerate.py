@@ -307,6 +307,9 @@ def _make_coverage_snapshot_md(main_rows: List[Dict[str, str]]) -> str:
     def is_layer2(row: Dict[str, str]) -> bool:
         return _norm(row.get("study_invocation_execution_window_selected_stage3_source", "")) != ""
 
+    def _date_only(value: str) -> str:
+        return _norm(value).split("T")[0] if _norm(value) else ""
+
     full_rows = [r for r in main_rows if _norm(r.get("style", "")) in styles]
     base_rows = [r for r in full_rows if is_base(r)]
     layer2_rows = [r for r in base_rows if is_layer2(r)]
@@ -314,6 +317,14 @@ def _make_coverage_snapshot_md(main_rows: List[Dict[str, str]]) -> str:
     full_total = len(full_rows)
     base_total = len(base_rows)
     layer2_total = len(layer2_rows)
+
+    full_dates = sorted(_date_only(r.get("run_started_at", "")) for r in full_rows if _date_only(r.get("run_started_at", "")))
+    layer2_dates = sorted(_date_only(r.get("run_started_at", "")) for r in layer2_rows if _date_only(r.get("run_started_at", "")))
+
+    layer1_start = full_dates[0] if full_dates else "N/A"
+    layer1_end = full_dates[-1] if full_dates else "N/A"
+    layer2_start = layer2_dates[0] if layer2_dates else "N/A"
+    layer2_end = layer2_dates[-1] if layer2_dates else "N/A"
 
     def pct(n: int, d: int) -> str:
         return f"{(100.0 * n / d):.2f}%" if d else "N/A"
@@ -328,7 +339,9 @@ def _make_coverage_snapshot_md(main_rows: List[Dict[str, str]]) -> str:
         f"- Four-style analysis dataset: **{full_total}** executed run×style records.",
         f"- Base controlled subset: **{base_total}** records (`Base = True`, first-attempt usable-verdict records).",
         f"- Layer 1 coverage: effectively **{full_total}/{full_total} (100.00%)** on the four-style dataset because Layer 1 is derived from run/job telemetry.",
+        f"- Layer 1 time coverage: **{layer1_start} to {layer1_end}** (`run_started_at` range for the four-style dataset).",
         f"- Layer 2 observable within Base: **{layer2_total}/{base_total} ({pct(layer2_total, base_total)})**.",
+        f"- Layer 2 time coverage: **{layer2_start} to {layer2_end}** (`run_started_at` range for the Layer 2-observable Base subset).",
         "",
         "## Breakdown by style",
         "",
@@ -348,7 +361,9 @@ def _make_coverage_snapshot_md(main_rows: List[Dict[str, str]]) -> str:
         "",
         "- The four-style dataset counts all executed run×style records currently represented in `MainDataset.csv` for Community, Custom, GMD, and Third-Party.",
         "- The Base subset matches the repo's controlled timing-comparison regime (`Base = True`).",
+        "- Layer 1 time coverage is derived from run/job telemetry and therefore spans the full four-style analysis dataset.",
         "- Layer 2 observability is counted using the presence of the selected Stage 3 invocation-window telemetry source, which is the practical repo-side indicator that the step-level timing decomposition is available.",
+        "- The narrower Layer 2 time window reflects the fact that directly observable step-level telemetry is available only for a later and smaller subset of Base.",
         "",
     ])
     return "\n".join(lines)
@@ -462,7 +477,9 @@ def _make_decision_support_guide_md(rule_rows: List[Dict[str, str]]) -> str:
     lines = [
         "# Decision-support guide (profile-derived)",
         "",
-        "The guidance below preserves the paper baseline recommendation and appends a refreshed recommendation from the latest active answers, together with the currently detected bottleneck and the first improvement focus for that rule–style combination.",
+        "This guide preserves the paper baseline recommendation and appends a refreshed recommendation from the latest active answers, together with the currently detected bottleneck and the first improvement focus for that rule–style combination.  ",
+        "For the structural selection logic, priority order, bottleneck detection, and guidance lookup method, see:",
+        "- `outputs/reports/decision_support_rule_structure.md`",
         "",
     ]
 
@@ -645,7 +662,15 @@ def regenerate_from_catalog(
         encoding="utf-8",
     )
 
-    profile_sections = ["# Refreshed operational profile", ""]
+    profile_sections = [
+        "# Refreshed operational profile",
+        "",
+        "This profile summarizes the current observation-level answers from the refreshed catalog.  ",
+        "For the structural definition of each observation's normalized measurement and validation design, see:",
+        "- `outputs/reports/observation_measurement_structure.md`",
+        "- `outputs/reports/observation_validation_notes.md`",
+        "",
+    ]
     current_rq = None
 
     for row in rows:
@@ -665,9 +690,9 @@ def regenerate_from_catalog(
             profile_sections.append(f"- Statistically favored answer: `{_norm(row.get(latest_favored, ''))}`")
         if latest_active:
             profile_sections.append(f"- Current active answer: `{_norm(row.get(latest_active, ''))}`")
-        profile_sections.append(f"- Validation interpretation: {_validation_interpretation(_norm(row.get(latest_validate, '')) if latest_validate else '', _norm(row.get(latest_target, '')) if latest_target else '', _norm(row.get(latest_favored, '')) if latest_favored else '', _norm(row.get(latest_active, '')) if latest_active else '')}")
-        profile_sections.append("- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.")
-        profile_sections.append("- Technical validation notes: see `outputs/reports/observation_validation_notes.md`.")
+        profile_sections.append(
+            f"- Validation interpretation: {_validation_interpretation(_norm(row.get(latest_validate, '')) if latest_validate else '', _norm(row.get(latest_target, '')) if latest_target else '', _norm(row.get(latest_favored, '')) if latest_favored else '', _norm(row.get(latest_active, '')) if latest_active else '')}"
+        )
         profile_sections.append("")
     profile_md.write_text("\n".join(profile_sections), encoding="utf-8")
 
