@@ -9,9 +9,9 @@
       "paper_rationale": "The paper positions GMD as the predictability-first profile and Community as the faster but more variable alternative.",
       "latest_rationale": "Latest recommendation comes from Obs. 2.1, Obs. 2.2 using the current active answers in the refreshed catalog.",
       "first_optimization_target": "Execution-path stabilization",
-      "improvement_suggestion": "Focus first on execution efficiency inside the main execution path",
+      "improvement_suggestion": "Focus first on execution efficiency inside the main execution path, including test efficiency, parallelization, flake reduction, and execution simplification.",
       "basis_observations": "Obs. 2.1, Obs. 2.2",
-      "literature_basis": "including test efficiency",
+      "literature_basis": "Profile-derived plus literature-backed execution-centric guidance",
       "snapshot_column": "ACTIVE_2026_03_27"
     },
     {

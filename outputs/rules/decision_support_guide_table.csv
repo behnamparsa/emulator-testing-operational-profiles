@@ -1,5 +1,5 @@
 objective,paper_recommendation,latest_snapshot_recommendation,latest_bottleneck,first_optimization_target,improvement_suggestion,basis_observations
-Predictable feedback,GMD,GMD,execution_path,Execution-path stabilization,Focus first on execution efficiency inside the main execution path,"Obs. 2.1, Obs. 2.2"
+Predictable feedback,GMD,GMD,execution_path,Execution-path stabilization,"Focus first on execution efficiency inside the main execution path, including test efficiency, parallelization, flake reduction, and execution simplification.","Obs. 2.1, Obs. 2.2"
 Fast first signal,GMD,GMD,entry_setup,Fast-entry tuning,Minimize pre-invocation setup and keep the entry path lightweight and reproducible.,Obs. 1.2
 Fastest typical end-to-end completion,Community,Community,distributed_overhead,End-to-end speed tuning,Stabilize entry/setup variability and reduce execution-path cost; then inspect the remaining residual tail.,Obs. 1.1
 Usable and successful run outcomes,GMD,GMD,reliability_outcome,Reliability preservation,Preserve the strong usable/success profile by focusing on failure prevention in the execution path and maintaining stable configuration.,"Obs. 4.1, Obs. 4.2, Obs. 4.4"
