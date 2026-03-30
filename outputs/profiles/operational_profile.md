@@ -67,10 +67,10 @@
 ### Obs. 2.2 — Which style is fast in typical terms but predictability-poor?
 
 - Released answer: `Community`
-- Latest Layer 1 status: `Insufficient evidence`
+- Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Community`
 - Current active answer: `Community`
-- Validation interpretation: Current data was not sufficient to confirm or replace the previous answer.
+- Validation interpretation: Current data still supports Community as the answer for this observation.
 - Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 

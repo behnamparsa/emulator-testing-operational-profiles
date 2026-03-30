@@ -58,11 +58,11 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 2.2 — Which style is fast in typical terms but predictability-poor?
 
-- Target answer: `Third-Party`
-- Validation status: `Insufficient evidence`
+- Target answer: `Community`
+- Validation status: `Passed`
 - Favored answer: `Community`
 - Active answer: `Community`
-- Validation note: Too few observations for stored style 'Third-Party' on 'predictability loss on study_run_duration_seconds'.
+- Validation note: Kruskal on predictability loss on study_run_duration_seconds: p=4.28e-102, epsilon^2=0.056; vs GMD: p_adj=2.14e-102, rbc=0.756. stored='Community', winner='Community'. Fail only when winner changes with significant omnibus + pairwise support and meaningful effect size.
 - Favored-answer note: Primary measurement: predictability loss on study_run_duration_seconds within the two fastest styles by run duration; winner = highest median normalized deviation.
 
 ## Obs. 2.3 — Which style carries the strongest absolute tail-risk profile?
@@ -103,7 +103,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 3.3 — Which style has a distributed overhead profile rather than a single dominant overhead source?
 
-- Target answer: `Community`
+- Target answer: `Custom`
 - Validation status: `Insufficient evidence`
 - Favored answer: `Custom`
 - Active answer: `Custom`
