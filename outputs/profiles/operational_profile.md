@@ -4,8 +4,7 @@
 
 ### Obs. 1.1 — Which style is the fastest overall operational profile?
 
-- Paper baseline answer: `Community`
-- Current baseline under validation: `Community`
+- Released answer: `Community`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Community`
 - Current active answer: `Community`
@@ -15,8 +14,7 @@
 
 ### Obs. 1.2 — Which style shows the clearest fast-entry profile without being the fastest overall finisher?
 
-- Paper baseline answer: `GMD`
-- Current baseline under validation: `GMD`
+- Released answer: `GMD`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
@@ -26,8 +24,7 @@
 
 ### Obs. 1.3 — Which style is the slowest sustained-execution profile?
 
-- Paper baseline answer: `Third-Party`
-- Current baseline under validation: `Third-Party`
+- Released answer: `Third-Party`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
@@ -37,8 +34,7 @@
 
 ### Obs. 1.4 — Which style shows a mixed speed profile with competitive entry, middling core path, and a long completion tail?
 
-- Paper baseline answer: `Custom`
-- Current baseline under validation: `GMD`
+- Released answer: `Custom`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Custom`
 - Current active answer: `GMD`
@@ -48,8 +44,7 @@
 
 ### Obs. 1.5 — Which style combines a fast core execution profile with a longer residual tail?
 
-- Paper baseline answer: `Community`
-- Current baseline under validation: `GMD`
+- Released answer: `Community`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Community`
 - Current active answer: `GMD`
@@ -61,8 +56,7 @@
 
 ### Obs. 2.1 — Which style is the most predictable on the main completion-oriented measures?
 
-- Paper baseline answer: `GMD`
-- Current baseline under validation: `GMD`
+- Released answer: `GMD`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
@@ -72,8 +66,7 @@
 
 ### Obs. 2.2 — Which style is fast in typical terms but predictability-poor?
 
-- Paper baseline answer: `Community`
-- Current baseline under validation: `Community`
+- Released answer: `Community`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Community`
 - Current active answer: `Community`
@@ -83,8 +76,7 @@
 
 ### Obs. 2.3 — Which style carries the strongest absolute tail-risk profile?
 
-- Paper baseline answer: `Third-Party`
-- Current baseline under validation: `Third-Party`
+- Released answer: `Third-Party`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
@@ -94,8 +86,7 @@
 
 ### Obs. 2.4 — Which style shows a mixed predictability profile that should be interpreted cautiously?
 
-- Paper baseline answer: `Custom`
-- Current baseline under validation: `Custom`
+- Released answer: `Custom`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Community`
 - Current active answer: `Custom`
@@ -107,8 +98,7 @@
 
 ### Obs. 3.1 — Which style is the clearest execution-centric overhead profile?
 
-- Paper baseline answer: `GMD`
-- Current baseline under validation: `GMD`
+- Released answer: `GMD`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
@@ -118,8 +108,7 @@
 
 ### Obs. 3.2 — Which style is best characterized by heavy entry plus heavy execution rather than a dominant completion tail?
 
-- Paper baseline answer: `Third-Party`
-- Current baseline under validation: `Third-Party`
+- Released answer: `Third-Party`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
@@ -129,8 +118,7 @@
 
 ### Obs. 3.3 — Which style has a distributed overhead profile rather than a single dominant overhead source?
 
-- Paper baseline answer: `Community`
-- Current baseline under validation: `Custom`
+- Released answer: `Community`
 - Latest Layer 1 status: `Insufficient evidence`
 - Statistically favored answer: `Custom`
 - Current active answer: `Custom`
@@ -140,8 +128,7 @@
 
 ### Obs. 3.4 — Which style remains a cautious tail-heavy mixed overhead case?
 
-- Paper baseline answer: `Custom`
-- Current baseline under validation: `Custom`
+- Released answer: `Custom`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Custom`
 - Current active answer: `Custom`
@@ -153,8 +140,7 @@
 
 ### Obs. 4.1 — Which style currently has the strongest usable run-level verdict rate?
 
-- Paper baseline answer: `GMD`
-- Current baseline under validation: `GMD`
+- Released answer: `GMD`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
@@ -164,8 +150,7 @@
 
 ### Obs. 4.2 — Which style currently has the strongest success rate among usable verdicts?
 
-- Paper baseline answer: `GMD`
-- Current baseline under validation: `GMD`
+- Released answer: `GMD`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
@@ -175,8 +160,7 @@
 
 ### Obs. 4.3 — Do the styles remain deployed in markedly different CI trigger contexts?
 
-- Paper baseline answer: `Yes`
-- Current baseline under validation: `Yes`
+- Released answer: `Yes`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Yes`
 - Current active answer: `Yes`
@@ -186,8 +170,7 @@
 
 ### Obs. 4.4 — Which styles remain strongly trigger-conditioned in success behavior?
 
-- Paper baseline answer: `Third-Party and Custom`
-- Current baseline under validation: `Third-Party`
+- Released answer: `Third-Party and Custom`
 - Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
