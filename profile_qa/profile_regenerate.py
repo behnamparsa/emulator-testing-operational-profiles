@@ -24,6 +24,34 @@ def _write_csv_rows(path: Path, rows: List[Dict[str, str]]) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
+def _load_optional_robustness_rows(path: Path) -> Dict[str, Dict[str, str]]:
+    if not path.exists():
+        return {}
+    rows = _read_csv_rows(path)
+    out: Dict[str, Dict[str, str]] = {}
+    for row in rows:
+        obs_id = _norm(row.get("obs_id", ""))
+        if obs_id:
+            out[obs_id] = row
+    return out
+
+
+def _robustness_profile_line(rob_row: Dict[str, str]) -> str:
+    status = _norm(rob_row.get("robustness_status", ""))
+    t1_dir = _norm(rob_row.get("tier1_directional_support", ""))
+    t2_dir = _norm(rob_row.get("tier2_directional_support", ""))
+
+    if not status:
+        return ""
+
+    if status == "supported_statistically" and t1_dir == "not_supported" and t2_dir == "supported":
+        return "supported_statistically (exact-signature directional support is mixed; coarsened-family support remains positive)"
+    if status == "partially_supported":
+        return "partially_supported (some robustness tiers support the current answer, while others are inconclusive or mixed)"
+    if status == "inconclusive":
+        return "inconclusive (robustness subsets do not provide enough stable support for a stronger conclusion)"
+
+    return status
 
 
 def _latest_column(prefix: str, fieldnames: List[str]) -> str | None:
@@ -573,6 +601,7 @@ def regenerate_from_catalog(
     refreshed_catalog_csv: Path = Path("outputs/catalog/observation_qa_catalog_refreshed.csv"),
     profile_md: Path = Path("outputs/profiles/operational_profile.md"),
     profile_json: Path = Path("outputs/profiles/operational_profile.json"),
+    robustness_check_csv: Path = Path("outputs/robustness_check/observation_robustness_check.csv"),
     rules_json: Path = Path("outputs/rules/decision_support_rules.json"),
     refresh_report_md: Path = Path("outputs/reports/latest_refresh_report.md"),
     profile_table_md: Path = Path("outputs/profiles/operational_profile_table.md"),
@@ -588,6 +617,8 @@ def regenerate_from_catalog(
     main_dataset_csv: Path = Path("data/processed/MainDataset.csv"),
 ) -> None:
     rows = _read_csv_rows(refreshed_catalog_csv)
+    robustness_rows = _load_optional_robustness_rows(robustness_check_csv)
+
     if not rows:
         raise RuntimeError(f"No rows found in refreshed catalog: {refreshed_catalog_csv}")
 
@@ -693,6 +724,12 @@ def regenerate_from_catalog(
         profile_sections.append(
             f"- Validation interpretation: {_validation_interpretation(_norm(row.get(latest_validate, '')) if latest_validate else '', _norm(row.get(latest_target, '')) if latest_target else '', _norm(row.get(latest_favored, '')) if latest_favored else '', _norm(row.get(latest_active, '')) if latest_active else '')}"
         )
+        rob_row = robustness_rows.get(_norm(row.get("obs_id", "")))
+        if rob_row:
+            rob_text = _robustness_profile_line(rob_row)
+            if rob_text:
+                profile_sections.append(f"- Robustness check: `{rob_text}`")
+
         profile_sections.append("")
     profile_md.write_text("\n".join(profile_sections), encoding="utf-8")
 
