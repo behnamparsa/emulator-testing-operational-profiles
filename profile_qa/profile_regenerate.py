@@ -6,7 +6,7 @@ import csv
 import json
 import re
 
-from .item_logic import observation_logic_rows, observation_logic_for_obs
+from .item_logic import observation_structure_for_obs
 
 
 def _read_csv_rows(path: Path) -> List[Dict[str, str]]:
@@ -226,15 +226,22 @@ def _validation_interpretation(status: str, target: str, favored: str, active: s
 
 def _make_observation_logic_md(rows: List[Dict[str, str]]) -> str:
     lines = [
-        "# Observation logic reference",
+        "# Observation measurement structure",
         "",
-        "This file explains the scoring/selection logic used for each observation in the refreshed operational-profile pipeline.",
+        "This file documents the normalized repo-side measurement structure used to automate observation validation and answer refresh.",
         "",
     ]
     for row in rows:
+        if not row:
+            continue
         lines.append(f"## {row['obs_id']}")
         lines.append("")
-        lines.append(f"- Item logic: {row['item_logic']}")
+        lines.append(f"- Paper intent: {row.get('paper_intent', '')}")
+        lines.append(f"- Primary measurement: {row.get('primary_measurement', '')}")
+        lines.append(f"- Fallback measurement: {row.get('fallback_measurement', '')}")
+        lines.append(f"- Winner rule: {row.get('winner_rule', '')}")
+        lines.append(f"- Validation rule: {row.get('validation_rule', '')}")
+        lines.append(f"- Technical note: {row.get('technical_note', '')}")
         lines.append("")
     return "\n".join(lines)
 
@@ -286,6 +293,7 @@ def regenerate_from_catalog(
     decision_guide_table_csv: Path = Path("outputs/rules/decision_support_guide_table.csv"),
     observation_logic_md: Path = Path("outputs/reports/observation_logic.md"),
     validation_notes_md: Path = Path("outputs/reports/observation_validation_notes.md"),
+    measurement_structure_md: Path = Path("outputs/reports/observation_measurement_structure.md"),
 ) -> None:
     rows = _read_csv_rows(refreshed_catalog_csv)
     if not rows:
@@ -303,6 +311,7 @@ def regenerate_from_catalog(
         decision_guide_table_csv,
         observation_logic_md,
         validation_notes_md,
+        measurement_structure_md,
     ]:
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -326,11 +335,9 @@ def regenerate_from_catalog(
 
     logic_rows = []
     for row in rows:
-        logic_rows.append({
-            "obs_id": _norm(row.get("obs_id", "")),
-            "item_logic": observation_logic_for_obs(_norm(row.get("obs_id", ""))),
-        })
+        logic_rows.append(observation_structure_for_obs(_norm(row.get("obs_id", ""))))
     observation_logic_md.write_text(_make_observation_logic_md(logic_rows), encoding="utf-8")
+    measurement_structure_md.write_text(_make_observation_logic_md(logic_rows), encoding="utf-8")
 
     validation_notes_md.write_text(
         _make_validation_notes_md(
@@ -368,7 +375,7 @@ def regenerate_from_catalog(
         profile_sections.append(
             f"- Validation interpretation: {_validation_interpretation(_norm(row.get(latest_validate, '')) if latest_validate else '', _norm(row.get(latest_target, '')) if latest_target else '', _norm(row.get(latest_favored, '')) if latest_favored else '', _norm(row.get(latest_active, '')) if latest_active else '')}"
         )
-        profile_sections.append(f"- Item logic reference: see `outputs/reports/observation_logic.md`.")
+        profile_sections.append(f"- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.")
         profile_sections.append(f"- Technical validation notes: see `outputs/reports/observation_validation_notes.md`.")
         profile_sections.append("")
     profile_md.write_text("\n".join(profile_sections), encoding="utf-8")
@@ -406,6 +413,7 @@ def regenerate_from_catalog(
     report_lines.append("## Companion references")
     report_lines.append("")
     report_lines.append("- Observation logic reference: `outputs/reports/observation_logic.md`")
+    report_lines.append("- Observation measurement structure: `outputs/reports/observation_measurement_structure.md`")
     report_lines.append("- Technical validation notes: `outputs/reports/observation_validation_notes.md`")
     report_lines.append("")
     refresh_report_md.write_text("\n".join(report_lines), encoding="utf-8")

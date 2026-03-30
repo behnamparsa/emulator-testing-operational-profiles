@@ -9,17 +9,17 @@
 - Statistically favored answer: `Community`
 - Current active answer: `Community`
 - Validation interpretation: Current data still supports Community as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 1.2 — Which style shows the clearest fast-entry profile without being the fastest overall finisher?
 
 - Released answer: `GMD`
 - Latest Layer 1 status: `Passed`
-- Statistically favored answer: `Community`
+- Statistically favored answer: `GMD`
 - Current active answer: `GMD`
-- Validation interpretation: Current data shows Community as the nominally favored answer, but the evidence was not strong enough to replace the current answer GMD.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Validation interpretation: Current data still supports GMD as the answer for this observation.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 1.3 — Which style is the slowest sustained-execution profile?
@@ -29,27 +29,27 @@
 - Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
 - Validation interpretation: Current data still supports Third-Party as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 1.4 — Which style shows a mixed speed profile with competitive entry, middling core path, and a long completion tail?
 
 - Released answer: `Custom`
 - Latest Layer 1 status: `Passed`
-- Statistically favored answer: `GMD`
+- Statistically favored answer: `Custom`
 - Current active answer: `GMD`
-- Validation interpretation: Current data still supports GMD as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Validation interpretation: Current data shows Custom as the nominally favored answer, but the evidence was not strong enough to replace the current answer GMD.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 1.5 — Which style combines a fast core execution profile with a longer residual tail?
 
 - Released answer: `Community`
 - Latest Layer 1 status: `Passed`
-- Statistically favored answer: `GMD`
+- Statistically favored answer: `Community`
 - Current active answer: `GMD`
-- Validation interpretation: Current data still supports GMD as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Validation interpretation: Current data shows Community as the nominally favored answer, but the evidence was not strong enough to replace the current answer GMD.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ## RQ2 — Predictability and tail risk
@@ -61,17 +61,17 @@
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
 - Validation interpretation: Current data still supports GMD as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 2.2 — Which style is fast in typical terms but predictability-poor?
 
 - Released answer: `Community`
-- Latest Layer 1 status: `Passed`
-- Statistically favored answer: `Third-Party`
-- Current active answer: `Third-Party`
-- Validation interpretation: Current data still supports Third-Party as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Latest Layer 1 status: `Insufficient evidence`
+- Statistically favored answer: `Community`
+- Current active answer: `Community`
+- Validation interpretation: Current data was not sufficient to confirm or replace the previous answer.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 2.3 — Which style carries the strongest absolute tail-risk profile?
@@ -81,17 +81,17 @@
 - Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
 - Validation interpretation: Current data still supports Third-Party as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 2.4 — Which style shows a mixed predictability profile that should be interpreted cautiously?
 
 - Released answer: `Custom`
 - Latest Layer 1 status: `Passed`
-- Statistically favored answer: `Custom`
+- Statistically favored answer: `Community`
 - Current active answer: `Custom`
-- Validation interpretation: Current data still supports Custom as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Validation interpretation: Current data shows Community as the nominally favored answer, but the evidence was not strong enough to replace the current answer Custom.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ## RQ3 — Overhead composition and actionable levers
@@ -103,27 +103,27 @@
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
 - Validation interpretation: Current data still supports GMD as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 3.2 — Which style is best characterized by heavy entry plus heavy execution rather than a dominant completion tail?
 
 - Released answer: `Third-Party`
 - Latest Layer 1 status: `Passed`
-- Statistically favored answer: `GMD`
+- Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
-- Validation interpretation: Current data shows GMD as the nominally favored answer, but the evidence was not strong enough to replace the current answer Third-Party.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Validation interpretation: Current data still supports Third-Party as the answer for this observation.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 3.3 — Which style has a distributed overhead profile rather than a single dominant overhead source?
 
 - Released answer: `Community`
-- Latest Layer 1 status: `Passed`
+- Latest Layer 1 status: `Insufficient evidence`
 - Statistically favored answer: `Custom`
-- Current active answer: `Community`
-- Validation interpretation: Current data shows Custom as the nominally favored answer, but the evidence was not strong enough to replace the current answer Community.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Current active answer: `Custom`
+- Validation interpretation: Current data was not sufficient to confirm or replace the previous answer.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 3.4 — Which style remains a cautious tail-heavy mixed overhead case?
@@ -133,7 +133,7 @@
 - Statistically favored answer: `Custom`
 - Current active answer: `Custom`
 - Validation interpretation: Current data still supports Custom as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ## RQ4 — Deployment context and run-level verdict usability
@@ -145,7 +145,7 @@
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
 - Validation interpretation: Current data still supports GMD as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 4.2 — Which style currently has the strongest success rate among usable verdicts?
@@ -155,17 +155,17 @@
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
 - Validation interpretation: Current data still supports GMD as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 4.3 — Do the styles remain deployed in markedly different CI trigger contexts?
 
 - Released answer: `Yes`
-- Latest Layer 1 status: `Failed`
+- Latest Layer 1 status: `Passed`
 - Statistically favored answer: `Yes`
 - Current active answer: `Yes`
-- Validation interpretation: Current data no longer supported Yes; the answer was updated to Yes.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Validation interpretation: Current data still supports Yes as the answer for this observation.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
 
 ### Obs. 4.4 — Which styles remain strongly trigger-conditioned in success behavior?
@@ -175,5 +175,5 @@
 - Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
 - Validation interpretation: Current data still supports Third-Party as the answer for this observation.
-- Item logic reference: see `outputs/reports/observation_logic.md`.
+- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.
 - Technical validation notes: see `outputs/reports/observation_validation_notes.md`.
