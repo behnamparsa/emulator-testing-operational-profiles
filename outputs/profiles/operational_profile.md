@@ -15,6 +15,7 @@ For the structural definition of each observation's normalized measurement and v
 - Statistically favored answer: `Community`
 - Current active answer: `Community`
 - Validation interpretation: Current data still supports Community as the answer for this observation.
+- Robustness check: `supported_statistically (exact-signature directional support is mixed; coarsened-family support remains positive)`
 
 ### Obs. 1.2 — Which style shows the clearest fast-entry profile without being the fastest overall finisher?
 
@@ -24,6 +25,7 @@ For the structural definition of each observation's normalized measurement and v
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
 - Validation interpretation: Current data still supports GMD as the answer for this observation.
+- Robustness check: `supported_statistically`
 
 ### Obs. 1.3 — Which style is the slowest sustained-execution profile?
 
@@ -33,6 +35,7 @@ For the structural definition of each observation's normalized measurement and v
 - Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
 - Validation interpretation: Current data still supports Third-Party as the answer for this observation.
+- Robustness check: `supported_statistically`
 
 ### Obs. 1.4 — Which style shows a mixed speed profile with competitive entry, middling core path, and a long completion tail?
 
@@ -62,6 +65,7 @@ For the structural definition of each observation's normalized measurement and v
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
 - Validation interpretation: Current data still supports GMD as the answer for this observation.
+- Robustness check: `supported_statistically`
 
 ### Obs. 2.2 — Which style is fast in typical terms but predictability-poor?
 
@@ -71,6 +75,7 @@ For the structural definition of each observation's normalized measurement and v
 - Statistically favored answer: `Community`
 - Current active answer: `Community`
 - Validation interpretation: Current data still supports Community as the answer for this observation.
+- Robustness check: `supported_statistically`
 
 ### Obs. 2.3 — Which style carries the strongest absolute tail-risk profile?
 
@@ -100,6 +105,7 @@ For the structural definition of each observation's normalized measurement and v
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
 - Validation interpretation: Current data still supports GMD as the answer for this observation.
+- Robustness check: `supported_statistically`
 
 ### Obs. 3.2 — Which style is best characterized by heavy entry plus heavy execution rather than a dominant completion tail?
 
@@ -109,6 +115,7 @@ For the structural definition of each observation's normalized measurement and v
 - Statistically favored answer: `Third-Party`
 - Current active answer: `Third-Party`
 - Validation interpretation: Current data still supports Third-Party as the answer for this observation.
+- Robustness check: `supported_statistically`
 
 ### Obs. 3.3 — Which style has a distributed overhead profile rather than a single dominant overhead source?
 
@@ -147,6 +154,7 @@ For the structural definition of each observation's normalized measurement and v
 - Statistically favored answer: `GMD`
 - Current active answer: `GMD`
 - Validation interpretation: Current data still supports GMD as the answer for this observation.
+- Robustness check: `supported_statistically`
 
 ### Obs. 4.3 — Do the styles remain deployed in markedly different CI trigger contexts?
 
@@ -156,6 +164,7 @@ For the structural definition of each observation's normalized measurement and v
 - Statistically favored answer: `Yes`
 - Current active answer: `Yes`
 - Validation interpretation: Current data still supports Yes as the answer for this observation.
+- Robustness check: `supported_statistically`
 
 ### Obs. 4.4 — Which styles remain strongly trigger-conditioned in success behavior?
 
