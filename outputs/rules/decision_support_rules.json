@@ -1,0 +1,29 @@
+{
+  "rules": [
+    {
+      "objective": "Predictable feedback",
+      "paper_recommendation": "GMD",
+      "ACTIVE_2026_03_27": "GMD"
+    },
+    {
+      "objective": "Fast first signal",
+      "paper_recommendation": "GMD",
+      "ACTIVE_2026_03_27": "GMD"
+    },
+    {
+      "objective": "Fastest typical end-to-end completion",
+      "paper_recommendation": "Community",
+      "ACTIVE_2026_03_27": "Community"
+    },
+    {
+      "objective": "Usable and successful run outcomes",
+      "paper_recommendation": "GMD",
+      "ACTIVE_2026_03_27": "GMD"
+    },
+    {
+      "objective": "Overhead-placement-led optimization",
+      "paper_recommendation": "GMD",
+      "ACTIVE_2026_03_27": "GMD"
+    }
+  ]
+}
