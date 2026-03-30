@@ -1,6 +1,6 @@
-name: 000_Main_Orchestrator_Analytical_Pipeline
+name: 000_2_Analytical_Pipeline_Main_Orchestrator
 run-name: >-
-  000_Main_Orchestrator_Analytical_Pipeline${{
+  000_2_Analytical_Pipeline_Main_Orchestrator${{
   inputs.dispatch_token && format(' [{0}]', inputs.dispatch_token) || '' }}
 
 on:

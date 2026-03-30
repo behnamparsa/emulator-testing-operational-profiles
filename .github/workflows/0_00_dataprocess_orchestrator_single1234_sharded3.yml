@@ -1,6 +1,6 @@
-name: 000_Main_Orchestrator_dataprocess_pipeline_single1234_sharded3
+name: 000_1_dataprocess_pipeline_single1234_sharded3_Main_Orchestrator
 run-name: >-
-  000_Main_Orchestrator_dataprocess_pipeline_single1234_sharded3${{
+  000_1_dataprocess_pipeline_single1234_sharded3_Main_Orchestrator${{
   inputs.dispatch_token && format(' [{0}]', inputs.dispatch_token) || '' }}
 
 on:
