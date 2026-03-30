@@ -119,48 +119,55 @@ def _style_cell(style: str, current_answers: Dict[str, str]) -> Dict[str, str]:
     }
 
 
-RULE_SPECS = [
+RULE_OBJECTIVES = [
     {
+        "rule_id": "predictable_feedback",
         "objective": "Predictable feedback",
         "paper_recommendation": "GMD",
         "basis_obs": ["Obs. 2.1", "Obs. 2.2"],
-        "paper_rationale": "The paper pairs predictability-first guidance with GMD's stability profile and uses Community as the fast-but-variable counterpoint.",
-        "latest_recommendation_rule": "Use the current active answer from Obs. 2.1 as the primary recommendation; use Obs. 2.2 to explain the trade-off against the fast-but-variable alternative.",
-        "fallback_rule": "If the latest recommendation is not feasible, fall back to the fast-but-variable alternative indicated by Obs. 2.2 when it differs from the recommendation; otherwise keep the current recommended style.",
+        "paper_rationale": "The paper positions GMD as the predictability-first profile and Community as the faster but more variable alternative.",
+        "latest_rule": "Prefer the current active answer from Obs. 2.1; use Obs. 2.2 as supporting context for the speed-versus-variability trade-off.",
     },
     {
+        "rule_id": "fast_first_signal",
         "objective": "Fast first signal",
         "paper_recommendation": "GMD",
-        "basis_obs": ["Obs. 1.2", "Obs. 1.1"],
-        "paper_rationale": "The paper associates fast first signal with GMD's entry advantage, while still distinguishing it from overall completion speed.",
-        "latest_recommendation_rule": "Use the current active answer from Obs. 1.2 as the primary recommendation; use Obs. 1.1 to explain whether that style also wins or loses on overall completion.",
-        "fallback_rule": "If the latest recommendation is not feasible, fall back to the fastest-overall style from Obs. 1.1 when it differs; otherwise keep the current recommended style.",
+        "basis_obs": ["Obs. 1.2"],
+        "paper_rationale": "The paper treats GMD as the clearest fast-entry style under the speed profile.",
+        "latest_rule": "Use the current active answer from Obs. 1.2.",
     },
     {
+        "rule_id": "fastest_typical_completion",
         "objective": "Fastest typical end-to-end completion",
         "paper_recommendation": "Community",
-        "basis_obs": ["Obs. 1.1", "Obs. 2.1"],
-        "paper_rationale": "The paper ties fastest typical completion to Community, while using GMD as the safer trade-off when predictability matters almost as much as speed.",
-        "latest_recommendation_rule": "Use the current active answer from Obs. 1.1 as the primary recommendation; use Obs. 2.1 to describe the predictability trade-off.",
-        "fallback_rule": "If the latest recommendation is not feasible, fall back to the predictability-first style from Obs. 2.1 when it differs; otherwise keep the current recommended style.",
+        "basis_obs": ["Obs. 1.1"],
+        "paper_rationale": "The paper treats Community as the fastest overall completion profile.",
+        "latest_rule": "Use the current active answer from Obs. 1.1.",
     },
     {
+        "rule_id": "usable_successful_outcomes",
         "objective": "Usable and successful run outcomes",
         "paper_recommendation": "GMD",
-        "basis_obs": ["Obs. 4.2", "Obs. 4.1", "Obs. 4.4"],
-        "paper_rationale": "The paper prefers GMD for usable and successful outcomes, while also using verdict- and trigger-conditioned observations to qualify that recommendation.",
-        "latest_recommendation_rule": "Use the current active answer from Obs. 4.2 as the primary recommendation; use Obs. 4.1 and Obs. 4.4 to explain usable-verdict and trigger-conditioned context.",
-        "fallback_rule": "If the latest recommendation is not feasible, fall back to the strongest usable-verdict style from Obs. 4.1 when it differs; otherwise keep the current recommended style and inspect Obs. 4.4 for trigger-conditioned caveats.",
+        "basis_obs": ["Obs. 4.1", "Obs. 4.2", "Obs. 4.4"],
+        "paper_rationale": "The paper combines usable-verdict rate, success rate among usable outcomes, and trigger-conditioned outcome context.",
+        "latest_rule": "Prefer the current active answer from Obs. 4.2, use Obs. 4.1 as supporting context, and use Obs. 4.4 to identify trigger-conditioned reliability issues.",
     },
     {
+        "rule_id": "overhead_led_optimization",
         "objective": "Overhead-placement-led optimization",
         "paper_recommendation": "GMD",
         "basis_obs": ["Obs. 3.1", "Obs. 3.2", "Obs. 3.3", "Obs. 3.4"],
-        "paper_rationale": "The paper's overhead guide is style-by-bottleneck rather than a single global winner; the repo flattens that into a primary recommended style plus a refreshed bottleneck-based lever.",
-        "latest_recommendation_rule": "Use the current active answer from Obs. 3.1 as the primary recommendation, but derive the current bottleneck from the latest active overhead observations across Obs. 3.1–3.4.",
-        "fallback_rule": "If the latest recommendation is not feasible, fall back to the style whose current overhead observation best matches the same bottleneck family; otherwise keep the current recommended style.",
+        "paper_rationale": "The paper maps styles to dominant overhead placements and then translates those placements into first optimization targets.",
+        "latest_rule": "Use the current active answer across the RQ3 observations to identify the dominant style-level bottleneck driving the optimization recommendation.",
     },
 ]
+
+STYLE_DEFAULT_BOTTLENECK = {
+    "Community": "distributed_overhead",
+    "GMD": "execution_path",
+    "Third-Party": "entry_setup",
+    "Custom": "post_execution_tail",
+}
 
 
 def _build_current_answer_map(rows: List[Dict[str, str]], latest_active: str | None) -> Dict[str, str]:
@@ -169,193 +176,6 @@ def _build_current_answer_map(rows: List[Dict[str, str]], latest_active: str | N
         obs_id = _norm(row.get("obs_id", ""))
         current_answers[obs_id] = _norm(row.get(latest_active, "")) if latest_active else ""
     return current_answers
-
-
-def _rule_spec_by_objective(objective: str) -> Dict[str, object]:
-    for spec in RULE_SPECS:
-        if spec["objective"] == objective:
-            return spec
-    raise KeyError(objective)
-
-
-def _style_bottleneck_label(style: str, objective: str, current_answers: Dict[str, str]) -> str:
-    style = _norm(style)
-    objective = _norm(objective)
-
-    if objective == "Usable and successful run outcomes":
-        if style in {"Third-Party", "Custom"} and _norm(current_answers.get("Obs. 4.4", "")) == style:
-            return "trigger_conditioning"
-        return "reliability_outcome"
-
-    if objective == "Fast first signal":
-        if style in {"GMD", "Community"}:
-            return "entry_setup"
-        if style == "Third-Party":
-            return "entry_execution"
-        return "post_execution_tail"
-
-    if objective == "Fastest typical end-to-end completion":
-        if style == "Community":
-            return "distributed_overhead" if _norm(current_answers.get("Obs. 3.3", "")) == "Community" else "post_execution_tail"
-        if style == "GMD":
-            return "execution_path"
-        if style == "Third-Party":
-            return "entry_execution"
-        return "post_execution_tail"
-
-    if objective == "Predictable feedback":
-        if style == "GMD":
-            return "execution_path"
-        if style == "Community":
-            return "distributed_overhead"
-        if style == "Third-Party":
-            return "entry_execution"
-        return "mixed_predictability"
-
-    if objective == "Overhead-placement-led optimization":
-        if style == "GMD":
-            return "execution_path"
-        if style == "Third-Party":
-            return "entry_execution"
-        if style == "Community":
-            return "distributed_overhead"
-        return "post_execution_tail"
-
-    if style == "GMD":
-        return "execution_path"
-    if style == "Third-Party":
-        return "entry_execution"
-    if style == "Community":
-        return "distributed_overhead"
-    return "post_execution_tail"
-
-
-IMPROVEMENT_SUGGESTIONS = {
-    "Community": {
-        "entry_setup": "Reduce entry/setup variability, trim repeated orchestration, and simplify the path into instrumentation execution.",
-        "execution_path": "Reduce execution-path cost through test-efficiency improvements, parallelism tuning, and flake reduction.",
-        "post_execution_tail": "Inspect residual tail work after execution, especially reporting, artifact handling, and late cleanup steps.",
-        "distributed_overhead": "Treat Community as a distributed bottleneck: tighten entry/setup, execution-path cost, and residual tail together rather than optimizing only one phase.",
-        "reliability_outcome": "Prioritize stable actionable outcomes by reducing cancellation-prone setup paths and clarifying failure handling in the dominant trigger regime.",
-        "trigger_conditioning": "Review trigger-specific workflow branches because Community's operational behavior may differ between push and other event contexts.",
-        "mixed_predictability": "Reduce spread across the full path by stabilizing both setup and execution rather than chasing only median speed.",
-        "entry_execution": "Shorten the path into execution and remove provisioning or orchestration work that delays the first useful signal.",
-    },
-    "GMD": {
-        "entry_setup": "Keep the fast-entry advantage by minimizing pre-test provisioning churn and avoiding unnecessary environment work before the managed-device path starts.",
-        "execution_path": "Optimize the execution path itself: improve test efficiency, reduce flakes, simplify execution, and tune parallelization inside the managed-device workflow.",
-        "post_execution_tail": "Inspect any residual completion tail after execution, especially result collection and teardown that should stay small for GMD.",
-        "distributed_overhead": "Even if multiple phases contribute, start with the execution path because that remains GMD's clearest controllable bottleneck family.",
-        "reliability_outcome": "Preserve the strong outcome profile by focusing on reliable execution and stable environment setup in the trigger regimes where GMD is currently used.",
-        "trigger_conditioning": "Review trigger-specific verdict behavior and keep the healthier event regime as the default deployment context when possible.",
-        "mixed_predictability": "Reduce outlier execution windows rather than chasing additional median-speed gains.",
-        "entry_execution": "Shorten the handoff from environment startup into active execution and keep the managed-device path tightly bounded.",
-    },
-    "Third-Party": {
-        "entry_setup": "Reduce provisioning and provider entry delay before the observable invocation begins.",
-        "execution_path": "Shorten provider-side execution cost and remove unnecessary in-window work once the external execution path starts.",
-        "post_execution_tail": "Inspect completion tail work only after entry and execution bottlenecks are under control, because they are usually the dominant cost.",
-        "distributed_overhead": "Treat Third-Party as a combined entry-plus-execution problem rather than a single tail bottleneck.",
-        "reliability_outcome": "Review verdict usability and success behavior first, especially if the current recommendation is driven by outcome rather than speed.",
-        "trigger_conditioning": "Treat trigger policy as the first improvement target: Third-Party's outcome behavior is strongly conditioned by event regime, so review schedule vs. push deployment before deeper timing tuning.",
-        "mixed_predictability": "Reduce variability in provider queueing, environment allocation, and execution stability before optimizing smaller tail segments.",
-        "entry_execution": "Third-Party's current refreshed bottleneck is the heavy entry plus heavy execution path; start with provisioning delay and provider-side execution cost.",
-    },
-    "Custom": {
-        "entry_setup": "Trim bespoke setup steps and remove repository-specific orchestration that delays reaching the instrumentation path.",
-        "execution_path": "Simplify custom execution logic and eliminate avoidable in-window work that prolongs the core path.",
-        "post_execution_tail": "Reduce bespoke post-execution work, reporting, and cleanup that create Custom's heavy completion tail.",
-        "distributed_overhead": "Standardize the custom workflow first, then inspect whether the largest remaining cost sits in entry, execution, or tail work.",
-        "reliability_outcome": "Review failure-dominant workflow branches and the operational contexts where Custom is being used before optimizing for raw speed.",
-        "trigger_conditioning": "Custom's current refreshed bottleneck is trigger-conditioned behavior; inspect event-specific success patterns and narrow the trigger regimes where it is relied on.",
-        "mixed_predictability": "Stabilize the custom workflow end to end because predictability loss can arise from both bespoke setup and long residual tail work.",
-        "entry_execution": "Reduce both the path into execution and the execution window itself when Custom behaves like a mixed entry/execution bottleneck.",
-    },
-}
-
-
-def _style_suggestion(style: str, bottleneck_label: str) -> str:
-    style = _norm(style)
-    bottleneck_label = _norm(bottleneck_label)
-    return IMPROVEMENT_SUGGESTIONS.get(style, {}).get(
-        bottleneck_label,
-        "Use the latest refreshed bottleneck for this style as the first optimization target."
-    )
-
-
-def _objective_fallback_note(objective: str, latest_style: str, current_answers: Dict[str, str], bottleneck_label: str) -> str:
-    objective = _norm(objective)
-    latest_style = _norm(latest_style)
-    bottleneck_phrase = bottleneck_label.replace("_", " ")
-
-    def alt_phrase(style: str) -> str:
-        alt_bottleneck = _style_bottleneck_label(style, objective, current_answers)
-        return alt_bottleneck.replace("_", " ")
-
-    if objective == "Predictable feedback":
-        alt = _norm(current_answers.get("Obs. 2.2", ""))
-        if alt and alt != latest_style:
-            return f"If {latest_style} is not feasible, use {alt} as the practical fallback, but treat it as the higher-variability alternative and focus first on its {alt_phrase(alt)} bottleneck."
-    if objective == "Fast first signal":
-        alt = _norm(current_answers.get("Obs. 1.1", ""))
-        if alt and alt != latest_style:
-            return f"If {latest_style} is not feasible, fall back to {alt} as the fastest-overall style, but accept that its first-signal profile differs and focus on its {alt_phrase(alt)} bottleneck."
-    if objective == "Fastest typical end-to-end completion":
-        alt = _norm(current_answers.get("Obs. 2.1", ""))
-        if alt and alt != latest_style:
-            return f"If {latest_style} is not feasible or predictability matters nearly as much as speed, use {alt} as the safer fallback and tune its {alt_phrase(alt)} bottleneck first."
-    if objective == "Usable and successful run outcomes":
-        alt = _norm(current_answers.get("Obs. 4.1", ""))
-        if alt and alt != latest_style:
-            return f"If {latest_style} is not feasible, use {alt} as the fallback style with the strongest usable-verdict support, and review trigger-conditioned caveats before relying on it."
-    if objective == "Overhead-placement-led optimization":
-        return f"If {latest_style} is not feasible, choose the style that shows the same bottleneck family in the latest overhead observations and focus on that {bottleneck_phrase} path first."
-    return f"If {latest_style} is not feasible, keep the next closest style-level profile in mind and focus on the currently detected {bottleneck_phrase} bottleneck."
-
-
-def _basis_note(current_answers: Dict[str, str], basis_obs: List[str]) -> str:
-    parts = []
-    for obs in basis_obs:
-        ans = _norm(current_answers.get(obs, ""))
-        if ans:
-            parts.append(f"{obs} → {ans}")
-        else:
-            parts.append(f"{obs} → unavailable")
-    return "; ".join(parts)
-
-
-def _latest_rule_recommendation(spec: Dict[str, object], current_answers: Dict[str, str]) -> str:
-    primary_obs = spec["basis_obs"][0]
-    return _norm(current_answers.get(primary_obs, "")) or _norm(spec.get("paper_recommendation", ""))
-
-
-def _latest_rule_rationale(objective: str, latest_style: str, current_answers: Dict[str, str], basis_obs: List[str], bottleneck_label: str) -> str:
-    basis_note = _basis_note(current_answers, basis_obs)
-    if objective == "Overhead-placement-led optimization":
-        return f"Latest recommendation follows the refreshed overhead profile, with {latest_style} selected from the current active overhead observation set. Structural basis: {basis_note}. Current bottleneck family: {bottleneck_label.replace('_', ' ')}."
-    return f"Latest recommendation follows the current active answer(s) behind this objective. Structural basis: {basis_note}. Current bottleneck family for {latest_style}: {bottleneck_label.replace('_', ' ')}."
-
-
-def _update_decision_support_table(guide_table_csv: Path, snapshot_col: str, current_answers: Dict[str, str]) -> List[Dict[str, str]]:
-    rows: List[Dict[str, str]] = []
-    for spec in RULE_SPECS:
-        latest = _latest_rule_recommendation(spec, current_answers)
-        bottleneck = _style_bottleneck_label(latest, _norm(spec["objective"]), current_answers)
-        rows.append(
-            {
-                "objective": _norm(spec["objective"]),
-                "paper_recommendation": _norm(spec["paper_recommendation"]),
-                "latest_snapshot_recommendation": latest,
-                "current_bottleneck": bottleneck,
-                "paper_rationale": _norm(spec["paper_rationale"]),
-                "latest_rationale": _latest_rule_rationale(_norm(spec["objective"]), latest, current_answers, list(spec["basis_obs"]), bottleneck),
-                "first_optimization_target": _style_suggestion(latest, bottleneck),
-                "fallback_feasibility_note": _objective_fallback_note(_norm(spec["objective"]), latest, current_answers, bottleneck),
-                "structural_basis_observations": ", ".join(spec["basis_obs"]),
-            }
-        )
-    _write_csv_rows(guide_table_csv, rows)
-    return rows
 
 
 def _make_profile_table_md(table_rows: List[Dict[str, str]]) -> str:
@@ -369,49 +189,6 @@ def _make_profile_table_md(table_rows: List[Dict[str, str]]) -> str:
     for row in table_rows:
         lines.append("|" + "|".join(row[h].replace("\n", " ") for h in headers) + "|")
     lines.append("")
-    return "\n".join(lines)
-
-
-def _make_decision_support_guide_md(guide_rows: List[Dict[str, str]]) -> str:
-    lines = [
-        "# Decision-support guide (profile-derived)",
-        "",
-        "This guide preserves the paper baseline recommendation, adds the latest refreshed recommendation, and pairs it with the latest refreshed bottleneck and first optimization target.",
-        "",
-    ]
-    for row in guide_rows:
-        lines.append(f"## {row['objective']}")
-        lines.append("")
-        lines.append(f"- Paper baseline recommendation: **{_norm(row.get('paper_recommendation', ''))}**")
-        lines.append(f"- Latest snapshot recommendation: **{_norm(row.get('latest_snapshot_recommendation', ''))}**")
-        lines.append(f"- Current bottleneck behind the recommendation: {_norm(row.get('current_bottleneck', '')).replace('_', ' ')}")
-        lines.append(f"- Why this recommendation: {_norm(row.get('latest_rationale', ''))}")
-        lines.append(f"- First optimization target: {_norm(row.get('first_optimization_target', ''))}")
-        lines.append(f"- Fallback / feasibility note: {_norm(row.get('fallback_feasibility_note', ''))}")
-        lines.append("")
-    return "\n".join(lines)
-
-
-def _make_decision_support_rule_structure_md(current_answers: Dict[str, str]) -> str:
-    lines = [
-        "# Decision-support rule structure",
-        "",
-        "This file documents the structural schema used to regenerate the five decision-support rules from the latest refreshed profile.",
-        "",
-    ]
-    for spec in RULE_SPECS:
-        objective = _norm(spec['objective'])
-        latest = _latest_rule_recommendation(spec, current_answers)
-        bottleneck = _style_bottleneck_label(latest, objective, current_answers)
-        lines.append(f"## {objective}")
-        lines.append("")
-        lines.append(f"- Basis observations: {', '.join(spec['basis_obs'])}")
-        lines.append(f"- Paper rationale: {_norm(spec['paper_rationale'])}")
-        lines.append(f"- Latest recommendation rule: {_norm(spec['latest_recommendation_rule'])}")
-        lines.append(f"- Current bottleneck rule: Detect the refreshed bottleneck label for the latest recommended style; current label = `{bottleneck}` for latest recommendation `{latest}`.")
-        lines.append(f"- First optimization target rule: Map (`{latest}`, `{bottleneck}`) to the style-and-bottleneck suggestion dictionary.")
-        lines.append(f"- Fallback / feasibility rule: {_norm(spec['fallback_rule'])}")
-        lines.append("")
     return "\n".join(lines)
 
 
@@ -452,7 +229,7 @@ def _validation_interpretation(status: str, target: str, favored: str, active: s
             return f"Current data no longer supported {target}; the answer was updated to {active}."
         return f"Current data no longer supported the previous answer {target}."
     if status == "Insufficient evidence":
-        return "Current data was not sufficient to confirm or replace the previous answer."
+        return f"Current data was not sufficient to replace the current answer {active or target}."
     return "Validation status requires manual interpretation."
 
 
@@ -512,8 +289,6 @@ def _make_validation_notes_md(rows: List[Dict[str, str]], latest_cols: Dict[str,
     return "\n".join(lines)
 
 
-
-
 def _style_order_key(style: str) -> tuple[int, str]:
     order = {"Community": 0, "Custom": 1, "GMD": 2, "Third-Party": 3}
     return (order.get(style, 999), style)
@@ -524,7 +299,7 @@ def _is_truthy(value: str) -> bool:
 
 
 def _make_coverage_snapshot_md(main_rows: List[Dict[str, str]]) -> str:
-    styles = sorted({ _norm(r.get("style", "")) for r in main_rows if _norm(r.get("style", "")) }, key=_style_order_key)
+    styles = sorted({_norm(r.get("style", "")) for r in main_rows if _norm(r.get("style", ""))}, key=_style_order_key)
 
     def is_base(row: Dict[str, str]) -> bool:
         return _is_truthy(row.get("Base", ""))
@@ -578,6 +353,150 @@ def _make_coverage_snapshot_md(main_rows: List[Dict[str, str]]) -> str:
     ])
     return "\n".join(lines)
 
+
+def _load_guidance_rows(path: Path) -> List[Dict[str, str]]:
+    return _read_csv_rows(path)
+
+
+def _detect_rule_recommendation(rule: Dict[str, object], current_answers: Dict[str, str]) -> str:
+    rule_id = rule["rule_id"]
+    if rule_id == "predictable_feedback":
+        return _norm(current_answers.get("Obs. 2.1", "")) or rule["paper_recommendation"]
+    if rule_id == "fast_first_signal":
+        return _norm(current_answers.get("Obs. 1.2", "")) or rule["paper_recommendation"]
+    if rule_id == "fastest_typical_completion":
+        return _norm(current_answers.get("Obs. 1.1", "")) or rule["paper_recommendation"]
+    if rule_id == "usable_successful_outcomes":
+        return _norm(current_answers.get("Obs. 4.2", "")) or _norm(current_answers.get("Obs. 4.1", "")) or rule["paper_recommendation"]
+    if rule_id == "overhead_led_optimization":
+        for obs in ["Obs. 3.1", "Obs. 3.2", "Obs. 3.3", "Obs. 3.4"]:
+            val = _norm(current_answers.get(obs, ""))
+            if val:
+                return val
+        return rule["paper_recommendation"]
+    return rule["paper_recommendation"]
+
+
+def _detect_bottleneck(rule_id: str, style: str, current_answers: Dict[str, str]) -> str:
+    style = _norm(style)
+    if rule_id == "predictable_feedback":
+        if style == "GMD":
+            return "execution_path"
+        if style == "Community":
+            return "distributed_overhead"
+        if style == "Third-Party":
+            return "execution_path"
+        if style == "Custom":
+            return "mixed_profile"
+    if rule_id == "fast_first_signal":
+        return "entry_setup"
+    if rule_id == "fastest_typical_completion":
+        if style == "Community":
+            return "distributed_overhead"
+        if style == "GMD":
+            return "execution_path"
+        if style == "Third-Party":
+            return "execution_path"
+        if style == "Custom":
+            return "post_execution_tail"
+    if rule_id == "usable_successful_outcomes":
+        if _norm(current_answers.get("Obs. 4.4", "")) == style:
+            return "trigger_context"
+        return "reliability_outcome"
+    if rule_id == "overhead_led_optimization":
+        if _norm(current_answers.get("Obs. 3.1", "")) == style:
+            return "execution_path"
+        if _norm(current_answers.get("Obs. 3.2", "")) == style:
+            return "entry_setup"
+        if _norm(current_answers.get("Obs. 3.3", "")) == style:
+            return "distributed_overhead"
+        if _norm(current_answers.get("Obs. 3.4", "")) == style:
+            return "post_execution_tail"
+    return STYLE_DEFAULT_BOTTLENECK.get(style, "mixed_profile")
+
+
+def _lookup_guidance(guidance_rows: List[Dict[str, str]], rule_id: str, style: str, bottleneck: str) -> Dict[str, str]:
+    candidates = [
+        (rule_id, style, bottleneck),
+        ("*", style, bottleneck),
+        (rule_id, style, "*"),
+        ("*", style, "*"),
+    ]
+    for r, s, b in candidates:
+        for row in guidance_rows:
+            if _norm(row.get("rule_id", "")) == r and _norm(row.get("style", "")) == s and _norm(row.get("bottleneck", "")) == b:
+                return row
+    return {
+        "guidance_title": "General improvement focus",
+        "guidance_text": "Use the style's dominant current bottleneck as the first improvement focus.",
+        "literature_basis": "Profile-derived default",
+    }
+
+
+def _build_rule_rows(current_answers: Dict[str, str], snapshot_col: str, guidance_rows: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    rows: List[Dict[str, str]] = []
+    for rule in RULE_OBJECTIVES:
+        latest_style = _detect_rule_recommendation(rule, current_answers)
+        bottleneck = _detect_bottleneck(rule["rule_id"], latest_style, current_answers)
+        guidance = _lookup_guidance(guidance_rows, rule["rule_id"], latest_style, bottleneck)
+        rows.append(
+            {
+                "rule_id": rule["rule_id"],
+                "objective": rule["objective"],
+                "paper_recommendation": rule["paper_recommendation"],
+                "latest_snapshot_recommendation": latest_style,
+                "latest_bottleneck": bottleneck,
+                "paper_rationale": rule["paper_rationale"],
+                "latest_rationale": f"Latest recommendation comes from {', '.join(rule['basis_obs'])} using the current active answers in the refreshed catalog.",
+                "first_optimization_target": _norm(guidance.get("guidance_title", "")),
+                "improvement_suggestion": _norm(guidance.get("guidance_text", "")),
+                "basis_observations": ", ".join(rule["basis_obs"]),
+                "literature_basis": _norm(guidance.get("literature_basis", "")),
+                "snapshot_column": snapshot_col,
+            }
+        )
+    return rows
+
+
+def _make_decision_support_guide_md(rule_rows: List[Dict[str, str]]) -> str:
+    lines = [
+        "# Decision-support guide (profile-derived)",
+        "",
+        "The guidance below preserves the paper baseline recommendation and appends a refreshed recommendation from the latest active answers, together with the currently detected bottleneck and the first improvement focus for that rule–style combination.",
+        "",
+    ]
+    for row in rule_rows:
+        lines.append(f"## {row['objective']}")
+        lines.append("")
+        lines.append(f"- Paper baseline recommendation: **{row['paper_recommendation']}**")
+        lines.append(f"- Latest snapshot recommendation: **{row['latest_snapshot_recommendation']}**")
+        lines.append(f"- Why this recommendation: {row['latest_rationale']}")
+        lines.append(f"- Current bottleneck emphasis: **{row['latest_bottleneck']}**")
+        lines.append(f"- First optimization target: **{row['first_optimization_target']}**")
+        lines.append(f"- Improvement suggestion: {row['improvement_suggestion']}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _make_decision_support_rule_structure_md() -> str:
+    lines = [
+        "# Decision-support rule structure",
+        "",
+        "This file documents the structural logic used by the repo to refresh the five decision-support rules.",
+        "",
+    ]
+    for rule in RULE_OBJECTIVES:
+        lines.append(f"## {rule['objective']}")
+        lines.append("")
+        lines.append(f"- Basis observations: {', '.join(rule['basis_obs'])}")
+        lines.append(f"- Paper rationale: {rule['paper_rationale']}")
+        lines.append(f"- Latest recommendation rule: {rule['latest_rule']}")
+        lines.append("- Bottleneck detection rule: detect the current bottleneck label for the latest recommended style using the rule-aware bottleneck mapper.")
+        lines.append("- Guidance lookup rule: use the first matching guidance row in the order (rule, style, bottleneck) → (*, style, bottleneck) → (rule, style, *) → (*, style, *).")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def regenerate_from_catalog(
     refreshed_catalog_csv: Path = Path("outputs/catalog/observation_qa_catalog_refreshed.csv"),
     profile_md: Path = Path("outputs/profiles/operational_profile.md"),
@@ -593,6 +512,7 @@ def regenerate_from_catalog(
     measurement_structure_md: Path = Path("outputs/reports/observation_measurement_structure.md"),
     coverage_snapshot_md: Path = Path("outputs/reports/coverage_snapshot.md"),
     decision_support_rule_structure_md: Path = Path("outputs/reports/decision_support_rule_structure.md"),
+    guidance_csv: Path = Path("config/rule_style_bottleneck_guidance.csv"),
     main_dataset_csv: Path = Path("data/processed/MainDataset.csv"),
 ) -> None:
     rows = _read_csv_rows(refreshed_catalog_csv)
@@ -631,13 +551,25 @@ def regenerate_from_catalog(
     profile_table_md.write_text(_make_profile_table_md(profile_table_rows), encoding="utf-8")
     profile_narrative_md.write_text(_make_narrative_md(current_answers), encoding="utf-8")
 
-    guide_rows = _update_decision_support_table(decision_guide_table_csv, snapshot_col, current_answers)
-    decision_guide_md.write_text(_make_decision_support_guide_md(guide_rows), encoding="utf-8")
-    decision_support_rule_structure_md.write_text(_make_decision_support_rule_structure_md(current_answers), encoding="utf-8")
+    guidance_rows = _load_guidance_rows(guidance_csv)
+    rule_rows = _build_rule_rows(current_answers, snapshot_col, guidance_rows)
+    table_rows = [
+        {
+            "objective": r["objective"],
+            "paper_recommendation": r["paper_recommendation"],
+            "latest_snapshot_recommendation": r["latest_snapshot_recommendation"],
+            "latest_bottleneck": r["latest_bottleneck"],
+            "first_optimization_target": r["first_optimization_target"],
+            "improvement_suggestion": r["improvement_suggestion"],
+            "basis_observations": r["basis_observations"],
+        }
+        for r in rule_rows
+    ]
+    _write_csv_rows(decision_guide_table_csv, table_rows)
+    decision_guide_md.write_text(_make_decision_support_guide_md(rule_rows), encoding="utf-8")
+    decision_support_rule_structure_md.write_text(_make_decision_support_rule_structure_md(), encoding="utf-8")
 
-    logic_rows = []
-    for row in rows:
-        logic_rows.append(observation_structure_for_obs(_norm(row.get("obs_id", ""))))
+    logic_rows = [observation_structure_for_obs(_norm(row.get("obs_id", ""))) for row in rows]
     measurement_structure_md.write_text(_make_observation_logic_md(logic_rows), encoding="utf-8")
 
     main_rows = _read_csv_rows(main_dataset_csv)
@@ -669,23 +601,23 @@ def regenerate_from_catalog(
             current_rq = rq
         profile_sections.append(f"### Obs. {_obs_number(row)} — {_obs_question(row)}")
         profile_sections.append("")
-        profile_sections.append(f"- Released answer: `{_norm(row.get('released_answer', ''))}`")
+        profile_sections.append(f"- Paper baseline answer: `{_norm(row.get('released_answer', ''))}`")
+        if latest_target:
+            profile_sections.append(f"- Current baseline under validation: `{_norm(row.get(latest_target, ''))}`")
         if latest_validate:
             profile_sections.append(f"- Latest Layer 1 status: `{_norm(row.get(latest_validate, ''))}`")
         if latest_favored:
             profile_sections.append(f"- Statistically favored answer: `{_norm(row.get(latest_favored, ''))}`")
         if latest_active:
             profile_sections.append(f"- Current active answer: `{_norm(row.get(latest_active, ''))}`")
-        profile_sections.append(
-            f"- Validation interpretation: {_validation_interpretation(_norm(row.get(latest_validate, '')) if latest_validate else '', _norm(row.get(latest_target, '')) if latest_target else '', _norm(row.get(latest_favored, '')) if latest_favored else '', _norm(row.get(latest_active, '')) if latest_active else '')}"
-        )
-        profile_sections.append(f"- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.")
-        profile_sections.append(f"- Technical validation notes: see `outputs/reports/observation_validation_notes.md`.")
+        profile_sections.append(f"- Validation interpretation: {_validation_interpretation(_norm(row.get(latest_validate, '')) if latest_validate else '', _norm(row.get(latest_target, '')) if latest_target else '', _norm(row.get(latest_favored, '')) if latest_favored else '', _norm(row.get(latest_active, '')) if latest_active else '')}")
+        profile_sections.append("- Measurement structure reference: see `outputs/reports/observation_measurement_structure.md`.")
+        profile_sections.append("- Technical validation notes: see `outputs/reports/observation_validation_notes.md`.")
         profile_sections.append("")
     profile_md.write_text("\n".join(profile_sections), encoding="utf-8")
 
     profile_json.write_text(json.dumps({"profile_table": profile_table_rows, "observations": rows}, indent=2), encoding="utf-8")
-    rules_json.write_text(json.dumps({"rules": guide_rows}, indent=2), encoding="utf-8")
+    rules_json.write_text(json.dumps({"rules": rule_rows}, indent=2), encoding="utf-8")
 
     report_lines = [
         "# Latest refresh report",
@@ -718,7 +650,7 @@ def regenerate_from_catalog(
     report_lines.append("")
     report_lines.append("- Observation measurement structure: `outputs/reports/observation_measurement_structure.md`")
     report_lines.append("- Coverage snapshot: `outputs/reports/coverage_snapshot.md`")
-    report_lines.append("- Decision-support rule structure: `outputs/reports/decision_support_rule_structure.md`")
     report_lines.append("- Technical validation notes: `outputs/reports/observation_validation_notes.md`")
+    report_lines.append("- Decision-support rule structure: `outputs/reports/decision_support_rule_structure.md`")
     report_lines.append("")
     refresh_report_md.write_text("\n".join(report_lines), encoding="utf-8")
