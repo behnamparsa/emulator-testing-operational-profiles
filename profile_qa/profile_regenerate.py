@@ -213,14 +213,16 @@ def _validation_interpretation(status: str, target: str, favored: str, active: s
     active = _norm(active)
     if status == "Passed":
         if favored and target and favored != target:
-            return f"Current data shows {favored} as the nominally favored answer, but the evidence was not strong enough to replace the current answer {target}."
+            return f"Current data shows {favored} as the nominally favored answer, but the evidence was not strong enough to replace the current baseline under validation {target}."
         return f"Current data still supports {active or target} as the answer for this observation."
     if status == "Failed":
         if active and favored and active == favored:
-            return f"Current data no longer supported {target}; the answer was updated to {active}."
-        return f"Current data no longer supported the previous answer {target}."
+            return f"Current data no longer supported the current baseline under validation {target}; the answer was updated to {active}."
+        return f"Current data no longer supported the current baseline under validation {target}."
     if status == "Insufficient evidence":
-        return "Current data was not sufficient to confirm or replace the previous answer."
+        if target:
+            return f"Current data was not sufficient to overturn the current baseline under validation {target}, so the active answer remains unchanged."
+        return "Current data was not sufficient to confirm or replace the current baseline under validation."
     return "Validation status requires manual interpretation."
 
 
@@ -265,7 +267,7 @@ def _make_validation_notes_md(rows: List[Dict[str, str]], latest_cols: Dict[str,
         lines.append(f"## {obs_id} — {_obs_question(row)}")
         lines.append("")
         if latest_target:
-            lines.append(f"- Target answer: `{_norm(row.get(latest_target, ''))}`")
+            lines.append(f"- Current baseline under validation: `{_norm(row.get(latest_target, ''))}`")
         if latest_validate:
             lines.append(f"- Validation status: `{_norm(row.get(latest_validate, ''))}`")
         if latest_favored:
@@ -434,7 +436,9 @@ def regenerate_from_catalog(
             current_rq = rq
         profile_sections.append(f"### Obs. {_obs_number(row)} — {_obs_question(row)}")
         profile_sections.append("")
-        profile_sections.append(f"- Released answer: `{_norm(row.get('released_answer', ''))}`")
+        profile_sections.append(f"- Paper baseline answer: `{_norm(row.get('released_answer', ''))}`")
+        if latest_target:
+            profile_sections.append(f"- Current baseline under validation: `{_norm(row.get(latest_target, ''))}`")
         if latest_validate:
             profile_sections.append(f"- Latest Layer 1 status: `{_norm(row.get(latest_validate, ''))}`")
         if latest_favored:

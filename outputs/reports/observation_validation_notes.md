@@ -4,7 +4,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 1.1 — Which style is the fastest overall operational profile?
 
-- Target answer: `Community`
+- Current baseline under validation: `Community`
 - Validation status: `Passed`
 - Favored answer: `Community`
 - Active answer: `Community`
@@ -13,7 +13,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 1.2 — Which style shows the clearest fast-entry profile without being the fastest overall finisher?
 
-- Target answer: `GMD`
+- Current baseline under validation: `GMD`
 - Validation status: `Passed`
 - Favored answer: `GMD`
 - Active answer: `GMD`
@@ -22,7 +22,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 1.3 — Which style is the slowest sustained-execution profile?
 
-- Target answer: `Third-Party`
+- Current baseline under validation: `Third-Party`
 - Validation status: `Passed`
 - Favored answer: `Third-Party`
 - Active answer: `Third-Party`
@@ -31,7 +31,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 1.4 — Which style shows a mixed speed profile with competitive entry, middling core path, and a long completion tail?
 
-- Target answer: `GMD`
+- Current baseline under validation: `GMD`
 - Validation status: `Passed`
 - Favored answer: `Custom`
 - Active answer: `GMD`
@@ -40,7 +40,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 1.5 — Which style combines a fast core execution profile with a longer residual tail?
 
-- Target answer: `GMD`
+- Current baseline under validation: `GMD`
 - Validation status: `Passed`
 - Favored answer: `Community`
 - Active answer: `GMD`
@@ -49,7 +49,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 2.1 — Which style is the most predictable on the main completion-oriented measures?
 
-- Target answer: `GMD`
+- Current baseline under validation: `GMD`
 - Validation status: `Passed`
 - Favored answer: `GMD`
 - Active answer: `GMD`
@@ -58,7 +58,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 2.2 — Which style is fast in typical terms but predictability-poor?
 
-- Target answer: `Community`
+- Current baseline under validation: `Community`
 - Validation status: `Passed`
 - Favored answer: `Community`
 - Active answer: `Community`
@@ -67,7 +67,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 2.3 — Which style carries the strongest absolute tail-risk profile?
 
-- Target answer: `Third-Party`
+- Current baseline under validation: `Third-Party`
 - Validation status: `Passed`
 - Favored answer: `Third-Party`
 - Active answer: `Third-Party`
@@ -76,7 +76,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 2.4 — Which style shows a mixed predictability profile that should be interpreted cautiously?
 
-- Target answer: `Custom`
+- Current baseline under validation: `Custom`
 - Validation status: `Passed`
 - Favored answer: `Community`
 - Active answer: `Custom`
@@ -85,7 +85,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 3.1 — Which style is the clearest execution-centric overhead profile?
 
-- Target answer: `GMD`
+- Current baseline under validation: `GMD`
 - Validation status: `Passed`
 - Favored answer: `GMD`
 - Active answer: `GMD`
@@ -94,7 +94,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 3.2 — Which style is best characterized by heavy entry plus heavy execution rather than a dominant completion tail?
 
-- Target answer: `Third-Party`
+- Current baseline under validation: `Third-Party`
 - Validation status: `Passed`
 - Favored answer: `Third-Party`
 - Active answer: `Third-Party`
@@ -103,7 +103,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 3.3 — Which style has a distributed overhead profile rather than a single dominant overhead source?
 
-- Target answer: `Custom`
+- Current baseline under validation: `Custom`
 - Validation status: `Insufficient evidence`
 - Favored answer: `Custom`
 - Active answer: `Custom`
@@ -112,7 +112,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 3.4 — Which style remains a cautious tail-heavy mixed overhead case?
 
-- Target answer: `Custom`
+- Current baseline under validation: `Custom`
 - Validation status: `Passed`
 - Favored answer: `Custom`
 - Active answer: `Custom`
@@ -121,7 +121,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 4.1 — Which style currently has the strongest usable run-level verdict rate?
 
-- Target answer: `GMD`
+- Current baseline under validation: `GMD`
 - Validation status: `Passed`
 - Favored answer: `GMD`
 - Active answer: `GMD`
@@ -130,7 +130,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 4.2 — Which style currently has the strongest success rate among usable verdicts?
 
-- Target answer: `GMD`
+- Current baseline under validation: `GMD`
 - Validation status: `Passed`
 - Favored answer: `GMD`
 - Active answer: `GMD`
@@ -139,7 +139,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 4.3 — Do the styles remain deployed in markedly different CI trigger contexts?
 
-- Target answer: `Yes`
+- Current baseline under validation: `Yes`
 - Validation status: `Passed`
 - Favored answer: `Yes`
 - Active answer: `Yes`
@@ -148,7 +148,7 @@ This file keeps the technical validation notes and favored-answer notes separate
 
 ## Obs. 4.4 — Which styles remain strongly trigger-conditioned in success behavior?
 
-- Target answer: `Third-Party`
+- Current baseline under validation: `Third-Party`
 - Validation status: `Passed`
 - Favored answer: `Third-Party`
 - Active answer: `Third-Party`
