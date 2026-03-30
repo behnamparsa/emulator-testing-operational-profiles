@@ -6,7 +6,7 @@ on:
       chunk_size:
         description: Per-style rows per Stage 3 shard
         required: false
-        default: '10'
+        default: '100'
       max_parallel:
         description: Max parallel Stage 3 shards
         required: false

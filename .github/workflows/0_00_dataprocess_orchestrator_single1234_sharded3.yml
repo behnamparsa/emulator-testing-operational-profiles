@@ -1,4 +1,7 @@
 name: 0_00_dataprocess_orchestrator_single1234_sharded3
+run-name: >-
+  0_00_dataprocess_orchestrator_single1234_sharded3${{
+  inputs.dispatch_token && format(' [{0}]', inputs.dispatch_token) || '' }}
 
 on:
   workflow_dispatch:
@@ -15,6 +18,10 @@ on:
         description: Max parallel Stage 3 shards
         required: false
         default: '3'
+      dispatch_token:
+        description: Optional unique token from the scheduled master orchestrator
+        required: false
+        default: ''
 
 permissions:
   actions: write
@@ -40,6 +47,7 @@ jobs:
           fi
           echo "target_ref=$TARGET_REF" >> "$GITHUB_OUTPUT"
           echo "Using ref: $TARGET_REF"
+          echo "Dispatch token: ${{ inputs.dispatch_token }}"
 
       - name: Run Stage 1 single workflow
         uses: actions/github-script@v8

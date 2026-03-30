@@ -1,10 +1,18 @@
 name: Profile Refresh Orchestrator
+run-name: >-
+  Profile Refresh Orchestrator${{
+  inputs.dispatch_token && format(' [{0}]', inputs.dispatch_token) || '' }}
 
 on:
   workflow_dispatch:
     inputs:
       snapshot_tag:
         description: Optional snapshot tag override
+        required: false
+        default: ''
+        type: string
+      dispatch_token:
+        description: Optional unique token from the scheduled master orchestrator
         required: false
         default: ''
         type: string

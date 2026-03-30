@@ -1,0 +1,105 @@
+name: 9_00 scheduled_master_refresh
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 1 1,4,7,10 *"
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: scheduled-master-refresh
+  cancel-in-progress: false
+
+jobs:
+  run-data-then-analytics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4320
+
+    steps:
+      - name: Dispatch data-processing orchestrator
+        id: dispatch_data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          DATA_WORKFLOW: 0_00_dataprocess_orchestrator_single1234_sharded3.yml
+        run: |
+          set -euo pipefail
+          START_TIME="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          echo "start_time=$START_TIME" >> "$GITHUB_OUTPUT"
+          gh workflow run "$DATA_WORKFLOW" --repo "$REPO" --ref "$REF"
+
+      - name: Wait for data-processing orchestrator to finish
+        id: wait_data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          DATA_WORKFLOW: 0_00_dataprocess_orchestrator_single1234_sharded3.yml
+          START_TIME: ${{ steps.dispatch_data.outputs.start_time }}
+        run: |
+          set -euo pipefail
+
+          echo "Waiting for $DATA_WORKFLOW on branch $REF started after $START_TIME"
+
+          for i in $(seq 1 720); do
+            RUN_JSON="$(gh run list \
+              --repo "$REPO" \
+              --workflow "$DATA_WORKFLOW" \
+              --branch "$REF" \
+              --limit 20 \
+              --json databaseId,status,conclusion,createdAt,event,url)"
+
+            MATCHED="$(echo "$RUN_JSON" | jq -c --arg start "$START_TIME" '
+              map(select(.event == "workflow_dispatch"))
+              | map(select(.createdAt >= $start))
+              | sort_by(.createdAt)
+              | reverse
+              | .[0] // empty
+            ')"
+
+            if [ -z "$MATCHED" ]; then
+              echo "No matching data-processing run found yet. Sleeping..."
+              sleep 60
+              continue
+            fi
+
+            RUN_ID="$(echo "$MATCHED" | jq -r '.databaseId')"
+            STATUS="$(echo "$MATCHED" | jq -r '.status')"
+            CONCLUSION="$(echo "$MATCHED" | jq -r '.conclusion // ""')"
+            URL="$(echo "$MATCHED" | jq -r '.url // ""')"
+
+            echo "Data run id=$RUN_ID status=$STATUS conclusion=$CONCLUSION"
+            echo "Run URL: $URL"
+
+            if [ "$STATUS" != "completed" ]; then
+              sleep 60
+              continue
+            fi
+
+            if [ "$CONCLUSION" = "success" ]; then
+              echo "data_run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+              echo "data_run_url=$URL" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "Data-processing orchestrator failed with conclusion=$CONCLUSION"
+            exit 1
+          done
+
+          echo "Timed out waiting for data-processing orchestrator."
+          exit 1
+
+      - name: Dispatch analytical orchestrator
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          ANALYTICS_WORKFLOW: 3_00_profile_refresh_orchestrator.yml
+        run: |
+          set -euo pipefail
+          gh workflow run "$ANALYTICS_WORKFLOW" --repo "$REPO" --ref "$REF"
+          echo "Triggered $ANALYTICS_WORKFLOW after successful data refresh."
