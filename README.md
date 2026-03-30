@@ -45,12 +45,13 @@ Structural companion:
 
 ### Secondary validation companion: robustness check
 
-The robustness companion is not treated as a third headline output. Instead, it provides a lighter refreshable validation layer that re-checks key findings under the paper's two-tier signature logic.
+The robustness companion is not treated as a third headline output. Instead, it provides a lighter refreshable validation layer that re-checks key findings under the paper's two-tier signature logic using structural support, directional support, and conditional statistical support when subset size is sufficient.
 
 Outputs:
 - `outputs/robustness_check/robustness_summary.md`
 - `outputs/robustness_check/signature_inventory.csv`
 - `outputs/robustness_check/observation_robustness_check.csv`
+- `outputs/robustness_check/coarsened_family_inventory.csv`
 
 ## Refreshed catalog state fields
 
