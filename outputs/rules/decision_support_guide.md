@@ -1,6 +1,8 @@
 # Decision-support guide (profile-derived)
 
-The guidance below preserves the paper baseline recommendation and appends a refreshed recommendation from the latest active answers, together with the currently detected bottleneck and the first improvement focus for that rule–style combination.
+This guide preserves the paper baseline recommendation and appends a refreshed recommendation from the latest active answers, together with the currently detected bottleneck and the first improvement focus for that rule–style combination.  
+For the structural selection logic, priority order, bottleneck detection, and guidance lookup method, see:
+- `outputs/reports/decision_support_rule_structure.md`
 
 ## If the primary objective is predictable feedback
 
