@@ -2,7 +2,7 @@
 
 |Style|Speed profile|Predictability|Overhead source & lever|Verdict & deployment|
 |---|---|---|---|---|
-|Community|Fastest overall completion|Fast but more variable than predictability-first alternatives|Distributed overhead profile; optimize entry/setup and execution path before residual tail|Generally usable with healthier success profile; mainly push-associated|
+|Community|Fastest overall completion; fast-core / longer-tail profile|Fast but more variable than predictability-first alternatives|Distributed overhead profile; optimize entry/setup and execution path before residual tail|Generally usable with healthier success profile; mainly push-associated|
 |Custom|Mixed-speed case: early entry can be competitive, but completion tail is heavy|Mixed and cautious profile|Tail-heavy mixed case; reduce bespoke post-execution work and standardize orchestration|Sparse and context-sensitive; low observed success and often pull_request-associated|
 |GMD|Clearest fast-entry profile|Strongest predictability-first profile|Execution-centric profile; first optimization target is the main execution path|Most usable and success-oriented outcomes; mainly schedule-associated|
 |Third-Party|Slow sustained-execution profile with heavy entry burden|Strongest absolute tail-risk profile|Heavy entry plus heavy execution; optimize provisioning delay and provider-side execution cost|Usable verdicts common, but success strongly trigger-conditioned; mainly schedule-associated|
