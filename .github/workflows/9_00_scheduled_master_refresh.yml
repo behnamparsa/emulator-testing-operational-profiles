@@ -3,7 +3,7 @@ name: 9_00 scheduled_master_refresh
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 3 1 1,4,7,11 *"
+    - cron: "0 3 1 1,4,7,10 *"
 
 permissions:
   actions: write
