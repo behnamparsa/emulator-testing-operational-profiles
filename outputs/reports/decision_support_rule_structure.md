@@ -1,43 +1,48 @@
 # Decision-support rule structure
 
-This file documents the structural logic behind each of the five primary decision-support objectives used by the repo.
+This file documents the structural schema used to regenerate the five decision-support rules from the latest refreshed profile.
 
 ## Predictable feedback
 
 - Basis observations: Obs. 2.1, Obs. 2.2
-- Paper rationale: The paper’s predictability-first guide prefers the style with the tightest dispersion and lightest relative tails on the main completion-oriented measures.
-- Latest recommendation rule: Latest recommendation comes from Obs. 2.1 (most predictable style). Obs. 2.2 still marks Community as the fast-but-less-predictable trade-off.
-- First optimization target rule: The repo maps the latest recommendation style to its profile-derived first optimization target.
-- Fallback / feasibility rule: The repo carries the paper-style fallback or feasibility condition for this objective as a separate note in the guide and export table.
+- Paper rationale: The paper pairs predictability-first guidance with GMD's stability profile and uses Community as the fast-but-variable counterpoint.
+- Latest recommendation rule: Use the current active answer from Obs. 2.1 as the primary recommendation; use Obs. 2.2 to explain the trade-off against the fast-but-variable alternative.
+- Current bottleneck rule: Detect the refreshed bottleneck label for the latest recommended style; current label = `execution_path` for latest recommendation `GMD`.
+- First optimization target rule: Map (`GMD`, `execution_path`) to the style-and-bottleneck suggestion dictionary.
+- Fallback / feasibility rule: If the latest recommendation is not feasible, fall back to the fast-but-variable alternative indicated by Obs. 2.2 when it differs from the recommendation; otherwise keep the current recommended style.
 
 ## Fast first signal
 
-- Basis observations: Obs. 1.2
-- Paper rationale: The paper’s guide prefers the clearest fast-entry style when early developer feedback is the main objective.
-- Latest recommendation rule: Latest recommendation comes from Obs. 1.2, which captures the clearest fast-entry profile under the normalized entry metric.
-- First optimization target rule: The repo maps the latest recommendation style to its profile-derived first optimization target.
-- Fallback / feasibility rule: The repo carries the paper-style fallback or feasibility condition for this objective as a separate note in the guide and export table.
+- Basis observations: Obs. 1.2, Obs. 1.1
+- Paper rationale: The paper associates fast first signal with GMD's entry advantage, while still distinguishing it from overall completion speed.
+- Latest recommendation rule: Use the current active answer from Obs. 1.2 as the primary recommendation; use Obs. 1.1 to explain whether that style also wins or loses on overall completion.
+- Current bottleneck rule: Detect the refreshed bottleneck label for the latest recommended style; current label = `entry_setup` for latest recommendation `GMD`.
+- First optimization target rule: Map (`GMD`, `entry_setup`) to the style-and-bottleneck suggestion dictionary.
+- Fallback / feasibility rule: If the latest recommendation is not feasible, fall back to the fastest-overall style from Obs. 1.1 when it differs; otherwise keep the current recommended style.
 
 ## Fastest typical end-to-end completion
 
-- Basis observations: Obs. 1.1
-- Paper rationale: The paper’s guide treats the fastest typical end-to-end completion objective as the headline overall-speed recommendation.
-- Latest recommendation rule: Latest recommendation comes from Obs. 1.1, which captures the fastest overall operational profile on the repo’s normalized overall-speed metric.
-- First optimization target rule: The repo maps the latest recommendation style to its profile-derived first optimization target.
-- Fallback / feasibility rule: The repo carries the paper-style fallback or feasibility condition for this objective as a separate note in the guide and export table.
+- Basis observations: Obs. 1.1, Obs. 2.1
+- Paper rationale: The paper ties fastest typical completion to Community, while using GMD as the safer trade-off when predictability matters almost as much as speed.
+- Latest recommendation rule: Use the current active answer from Obs. 1.1 as the primary recommendation; use Obs. 2.1 to describe the predictability trade-off.
+- Current bottleneck rule: Detect the refreshed bottleneck label for the latest recommended style; current label = `post_execution_tail` for latest recommendation `Community`.
+- First optimization target rule: Map (`Community`, `post_execution_tail`) to the style-and-bottleneck suggestion dictionary.
+- Fallback / feasibility rule: If the latest recommendation is not feasible, fall back to the predictability-first style from Obs. 2.1 when it differs; otherwise keep the current recommended style.
 
 ## Usable and successful run outcomes
 
-- Basis observations: Obs. 4.1, Obs. 4.2
-- Paper rationale: The paper’s guide combines usable-verdict rate and success rate among usable outcomes when actionability of CI results is the main objective.
-- Latest recommendation rule: Latest recommendation is shared by Obs. 4.1 and Obs. 4.2, so GMD remains the strongest actionability-oriented choice.
-- First optimization target rule: The repo maps the latest recommendation style to its profile-derived first optimization target.
-- Fallback / feasibility rule: The repo carries the paper-style fallback or feasibility condition for this objective as a separate note in the guide and export table.
+- Basis observations: Obs. 4.2, Obs. 4.1, Obs. 4.4
+- Paper rationale: The paper prefers GMD for usable and successful outcomes, while also using verdict- and trigger-conditioned observations to qualify that recommendation.
+- Latest recommendation rule: Use the current active answer from Obs. 4.2 as the primary recommendation; use Obs. 4.1 and Obs. 4.4 to explain usable-verdict and trigger-conditioned context.
+- Current bottleneck rule: Detect the refreshed bottleneck label for the latest recommended style; current label = `reliability_outcome` for latest recommendation `GMD`.
+- First optimization target rule: Map (`GMD`, `reliability_outcome`) to the style-and-bottleneck suggestion dictionary.
+- Fallback / feasibility rule: If the latest recommendation is not feasible, fall back to the strongest usable-verdict style from Obs. 4.1 when it differs; otherwise keep the current recommended style and inspect Obs. 4.4 for trigger-conditioned caveats.
 
 ## Overhead-placement-led optimization
 
 - Basis observations: Obs. 3.1, Obs. 3.2, Obs. 3.3, Obs. 3.4
-- Paper rationale: The paper’s guide uses the overhead profile to map an optimization objective to the style whose dominant bottleneck best matches the intended intervention.
-- Latest recommendation rule: Latest recommendation is anchored by Obs. 3.1 (GMD) for the execution-centric case, with structural support from Obs. 3.2 (Third-Party), Obs. 3.3 (Custom), and Obs. 3.4 (Custom).
-- First optimization target rule: The repo maps the latest recommendation style to its profile-derived first optimization target.
-- Fallback / feasibility rule: The repo carries the paper-style fallback or feasibility condition for this objective as a separate note in the guide and export table.
+- Paper rationale: The paper's overhead guide is style-by-bottleneck rather than a single global winner; the repo flattens that into a primary recommended style plus a refreshed bottleneck-based lever.
+- Latest recommendation rule: Use the current active answer from Obs. 3.1 as the primary recommendation, but derive the current bottleneck from the latest active overhead observations across Obs. 3.1–3.4.
+- Current bottleneck rule: Detect the refreshed bottleneck label for the latest recommended style; current label = `execution_path` for latest recommendation `GMD`.
+- First optimization target rule: Map (`GMD`, `execution_path`) to the style-and-bottleneck suggestion dictionary.
+- Fallback / feasibility rule: If the latest recommendation is not feasible, fall back to the style whose current overhead observation best matches the same bottleneck family; otherwise keep the current recommended style.

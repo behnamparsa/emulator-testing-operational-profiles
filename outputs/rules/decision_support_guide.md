@@ -1,43 +1,48 @@
 # Decision-support guide (profile-derived)
 
-This guide keeps the paper baseline recommendation and the latest snapshot recommendation, then presents the practical guidance in a bulletpoint style closer to the paper's decision-support figure.
+This guide preserves the paper baseline recommendation, adds the latest refreshed recommendation, and pairs it with the latest refreshed bottleneck and first optimization target.
 
 ## Predictable feedback
 
-- Paper baseline recommendation: `GMD`
-- Latest snapshot recommendation: `GMD`
-- Why this recommendation: Latest recommendation comes from Obs. 2.1 (most predictable style). Obs. 2.2 still marks Community as the fast-but-less-predictable trade-off.
-- First optimization target: Optimize the execution path itself, including test efficiency, parallelization, flake reduction, and execution simplification.
-- Fallback / feasibility note: If GMD is not feasible, Community remains the practical fallback but should be treated as higher tail-risk.
+- Paper baseline recommendation: **GMD**
+- Latest snapshot recommendation: **GMD**
+- Current bottleneck behind the recommendation: execution path
+- Why this recommendation: Latest recommendation follows the current active answer(s) behind this objective. Structural basis: Obs. 2.1 → GMD; Obs. 2.2 → Community. Current bottleneck family for GMD: execution path.
+- First optimization target: Optimize the execution path itself: improve test efficiency, reduce flakes, simplify execution, and tune parallelization inside the managed-device workflow.
+- Fallback / feasibility note: If GMD is not feasible, use Community as the practical fallback, but treat it as the higher-variability alternative and focus first on its distributed overhead bottleneck.
 
 ## Fast first signal
 
-- Paper baseline recommendation: `GMD`
-- Latest snapshot recommendation: `GMD`
-- Why this recommendation: Latest recommendation comes from Obs. 1.2, which captures the clearest fast-entry profile under the normalized entry metric.
-- First optimization target: Optimize the execution path itself, including test efficiency, parallelization, flake reduction, and execution simplification.
-- Fallback / feasibility note: If the recommended fast-entry style is not feasible, use Community as the practical fallback; do not choose Third-Party on early-feedback grounds alone.
+- Paper baseline recommendation: **GMD**
+- Latest snapshot recommendation: **GMD**
+- Current bottleneck behind the recommendation: entry setup
+- Why this recommendation: Latest recommendation follows the current active answer(s) behind this objective. Structural basis: Obs. 1.2 → GMD; Obs. 1.1 → Community. Current bottleneck family for GMD: entry setup.
+- First optimization target: Keep the fast-entry advantage by minimizing pre-test provisioning churn and avoiding unnecessary environment work before the managed-device path starts.
+- Fallback / feasibility note: If GMD is not feasible, fall back to Community as the fastest-overall style, but accept that its first-signal profile differs and focus on its entry setup bottleneck.
 
 ## Fastest typical end-to-end completion
 
-- Paper baseline recommendation: `Community`
-- Latest snapshot recommendation: `Community`
-- Why this recommendation: Latest recommendation comes from Obs. 1.1, which captures the fastest overall operational profile on the repo’s normalized overall-speed metric.
-- First optimization target: Stabilize entry/setup variability and reduce execution-path cost; then inspect the remaining residual tail.
-- Fallback / feasibility note: If predictability matters almost as much as median speed and GMD is feasible, prefer GMD as the safer trade-off.
+- Paper baseline recommendation: **Community**
+- Latest snapshot recommendation: **Community**
+- Current bottleneck behind the recommendation: post execution tail
+- Why this recommendation: Latest recommendation follows the current active answer(s) behind this objective. Structural basis: Obs. 1.1 → Community; Obs. 2.1 → GMD. Current bottleneck family for Community: post execution tail.
+- First optimization target: Inspect residual tail work after execution, especially reporting, artifact handling, and late cleanup steps.
+- Fallback / feasibility note: If Community is not feasible or predictability matters nearly as much as speed, use GMD as the safer fallback and tune its execution path bottleneck first.
 
 ## Usable and successful run outcomes
 
-- Paper baseline recommendation: `GMD`
-- Latest snapshot recommendation: `GMD`
-- Why this recommendation: Latest recommendation is shared by Obs. 4.1 and Obs. 4.2, so GMD remains the strongest actionability-oriented choice.
-- First optimization target: Optimize the execution path itself, including test efficiency, parallelization, flake reduction, and execution simplification.
-- Fallback / feasibility note: Community remains the general-purpose fallback with broader practical coverage; treat Third-Party and Custom as trigger-sensitive.
+- Paper baseline recommendation: **GMD**
+- Latest snapshot recommendation: **GMD**
+- Current bottleneck behind the recommendation: reliability outcome
+- Why this recommendation: Latest recommendation follows the current active answer(s) behind this objective. Structural basis: Obs. 4.2 → GMD; Obs. 4.1 → GMD; Obs. 4.4 → Third-Party. Current bottleneck family for GMD: reliability outcome.
+- First optimization target: Preserve the strong outcome profile by focusing on reliable execution and stable environment setup in the trigger regimes where GMD is currently used.
+- Fallback / feasibility note: If GMD is not feasible, keep the next closest style-level profile in mind and focus on the currently detected reliability outcome bottleneck.
 
 ## Overhead-placement-led optimization
 
-- Paper baseline recommendation: `GMD`
-- Latest snapshot recommendation: `GMD`
-- Why this recommendation: Latest recommendation is anchored by Obs. 3.1 (GMD) for the execution-centric case, with structural support from Obs. 3.2 (Third-Party), Obs. 3.3 (Custom), and Obs. 3.4 (Custom).
-- First optimization target: Optimize the execution path itself, including test efficiency, parallelization, flake reduction, and execution simplification.
-- Fallback / feasibility note: If the local bottleneck is not execution-centric, consult the structural notes for Third-Party (entry + execution), Community (distributed), and Custom (tail-heavy) before applying the recommendation.
+- Paper baseline recommendation: **GMD**
+- Latest snapshot recommendation: **GMD**
+- Current bottleneck behind the recommendation: execution path
+- Why this recommendation: Latest recommendation follows the refreshed overhead profile, with GMD selected from the current active overhead observation set. Structural basis: Obs. 3.1 → GMD; Obs. 3.2 → Third-Party; Obs. 3.3 → Custom; Obs. 3.4 → Custom. Current bottleneck family: execution path.
+- First optimization target: Optimize the execution path itself: improve test efficiency, reduce flakes, simplify execution, and tune parallelization inside the managed-device workflow.
+- Fallback / feasibility note: If GMD is not feasible, choose the style that shows the same bottleneck family in the latest overhead observations and focus on that execution path path first.

@@ -34,5 +34,5 @@ Latest favored-answer column: `L1_favored_answer_2026_03_27`
 
 - Observation measurement structure: `outputs/reports/observation_measurement_structure.md`
 - Coverage snapshot: `outputs/reports/coverage_snapshot.md`
-- Technical validation notes: `outputs/reports/observation_validation_notes.md`
 - Decision-support rule structure: `outputs/reports/decision_support_rule_structure.md`
+- Technical validation notes: `outputs/reports/observation_validation_notes.md`
