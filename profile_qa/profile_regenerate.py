@@ -262,7 +262,7 @@ def _make_decision_support_guide_md(guide_rows: List[Dict[str, str]]) -> str:
     lines = [
         "# Decision-support guide (profile-derived)",
         "",
-        "This guide preserves the paper baseline recommendation, appends the latest snapshot recommendation, and records the first optimization target and feasibility note behind each primary objective.",
+        "This guide keeps the paper baseline recommendation and the latest snapshot recommendation, then presents the practical guidance in a bulletpoint style closer to the paper's decision-support figure.",
         "",
     ]
     for row in guide_rows:
@@ -271,11 +271,9 @@ def _make_decision_support_guide_md(guide_rows: List[Dict[str, str]]) -> str:
             "",
             f"- Paper baseline recommendation: `{row['paper_recommendation']}`",
             f"- Latest snapshot recommendation: `{row['latest_snapshot_recommendation']}`",
-            f"- Paper rationale: {row['paper_rationale']}",
-            f"- Latest rationale: {row['latest_rationale']}",
+            f"- Why this recommendation: {row['latest_rationale']}",
             f"- First optimization target: {row['first_optimization_target']}",
             f"- Fallback / feasibility note: {row['fallback_or_feasibility_note']}",
-            f"- Structural basis: {row['basis_observations']}",
             "",
         ])
     return "\n".join(lines)
@@ -292,14 +290,11 @@ def _make_rule_structure_md(guide_rows: List[Dict[str, str]]) -> str:
         lines.extend([
             f"## {row['objective']}",
             "",
-            f"- Paper baseline recommendation: `{row['paper_recommendation']}`",
-            f"- Latest snapshot recommendation: `{row['latest_snapshot_recommendation']}`",
             f"- Basis observations: {row['basis_observations']}",
             f"- Paper rationale: {row['paper_rationale']}",
             f"- Latest recommendation rule: {row['latest_rationale']}",
             "- First optimization target rule: The repo maps the latest recommendation style to its profile-derived first optimization target.",
-            f"- Current first optimization target: {row['first_optimization_target']}",
-            f"- Fallback / feasibility note: {row['fallback_or_feasibility_note']}",
+            "- Fallback / feasibility rule: The repo carries the paper-style fallback or feasibility condition for this objective as a separate note in the guide and export table.",
             "",
         ])
     return "\n".join(lines)
