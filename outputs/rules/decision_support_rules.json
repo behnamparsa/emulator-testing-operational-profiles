@@ -1,59 +1,74 @@
 {
   "rules": [
     {
+      "rule_id": "predictable_feedback",
       "objective": "Predictable feedback",
       "paper_recommendation": "GMD",
       "latest_snapshot_recommendation": "GMD",
-      "current_bottleneck": "execution_path",
-      "paper_rationale": "The paper pairs predictability-first guidance with GMD's stability profile and uses Community as the fast-but-variable counterpoint.",
-      "latest_rationale": "Latest recommendation follows the current active answer(s) behind this objective. Structural basis: Obs. 2.1 \u2192 GMD; Obs. 2.2 \u2192 Community. Current bottleneck family for GMD: execution path.",
-      "first_optimization_target": "Optimize the execution path itself: improve test efficiency, reduce flakes, simplify execution, and tune parallelization inside the managed-device workflow.",
-      "fallback_feasibility_note": "If GMD is not feasible, use Community as the practical fallback, but treat it as the higher-variability alternative and focus first on its distributed overhead bottleneck.",
-      "structural_basis_observations": "Obs. 2.1, Obs. 2.2"
+      "latest_bottleneck": "execution_path",
+      "paper_rationale": "The paper positions GMD as the predictability-first profile and Community as the faster but more variable alternative.",
+      "latest_rationale": "Latest recommendation comes from Obs. 2.1, Obs. 2.2 using the current active answers in the refreshed catalog.",
+      "first_optimization_target": "Execution-path stabilization",
+      "improvement_suggestion": "Focus first on execution efficiency inside the main execution path",
+      "basis_observations": "Obs. 2.1, Obs. 2.2",
+      "literature_basis": "including test efficiency",
+      "snapshot_column": "ACTIVE_2026_03_27"
     },
     {
+      "rule_id": "fast_first_signal",
       "objective": "Fast first signal",
       "paper_recommendation": "GMD",
       "latest_snapshot_recommendation": "GMD",
-      "current_bottleneck": "entry_setup",
-      "paper_rationale": "The paper associates fast first signal with GMD's entry advantage, while still distinguishing it from overall completion speed.",
-      "latest_rationale": "Latest recommendation follows the current active answer(s) behind this objective. Structural basis: Obs. 1.2 \u2192 GMD; Obs. 1.1 \u2192 Community. Current bottleneck family for GMD: entry setup.",
-      "first_optimization_target": "Keep the fast-entry advantage by minimizing pre-test provisioning churn and avoiding unnecessary environment work before the managed-device path starts.",
-      "fallback_feasibility_note": "If GMD is not feasible, fall back to Community as the fastest-overall style, but accept that its first-signal profile differs and focus on its entry setup bottleneck.",
-      "structural_basis_observations": "Obs. 1.2, Obs. 1.1"
+      "latest_bottleneck": "entry_setup",
+      "paper_rationale": "The paper treats GMD as the clearest fast-entry style under the speed profile.",
+      "latest_rationale": "Latest recommendation comes from Obs. 1.2 using the current active answers in the refreshed catalog.",
+      "first_optimization_target": "Fast-entry tuning",
+      "improvement_suggestion": "Minimize pre-invocation setup and keep the entry path lightweight and reproducible.",
+      "basis_observations": "Obs. 1.2",
+      "literature_basis": "Profile-derived fast-entry guidance",
+      "snapshot_column": "ACTIVE_2026_03_27"
     },
     {
+      "rule_id": "fastest_typical_completion",
       "objective": "Fastest typical end-to-end completion",
       "paper_recommendation": "Community",
       "latest_snapshot_recommendation": "Community",
-      "current_bottleneck": "post_execution_tail",
-      "paper_rationale": "The paper ties fastest typical completion to Community, while using GMD as the safer trade-off when predictability matters almost as much as speed.",
-      "latest_rationale": "Latest recommendation follows the current active answer(s) behind this objective. Structural basis: Obs. 1.1 \u2192 Community; Obs. 2.1 \u2192 GMD. Current bottleneck family for Community: post execution tail.",
-      "first_optimization_target": "Inspect residual tail work after execution, especially reporting, artifact handling, and late cleanup steps.",
-      "fallback_feasibility_note": "If Community is not feasible or predictability matters nearly as much as speed, use GMD as the safer fallback and tune its execution path bottleneck first.",
-      "structural_basis_observations": "Obs. 1.1, Obs. 2.1"
+      "latest_bottleneck": "distributed_overhead",
+      "paper_rationale": "The paper treats Community as the fastest overall completion profile.",
+      "latest_rationale": "Latest recommendation comes from Obs. 1.1 using the current active answers in the refreshed catalog.",
+      "first_optimization_target": "End-to-end speed tuning",
+      "improvement_suggestion": "Stabilize entry/setup variability and reduce execution-path cost; then inspect the remaining residual tail.",
+      "basis_observations": "Obs. 1.1",
+      "literature_basis": "Profile-derived fastest-overall guidance",
+      "snapshot_column": "ACTIVE_2026_03_27"
     },
     {
+      "rule_id": "usable_successful_outcomes",
       "objective": "Usable and successful run outcomes",
       "paper_recommendation": "GMD",
       "latest_snapshot_recommendation": "GMD",
-      "current_bottleneck": "reliability_outcome",
-      "paper_rationale": "The paper prefers GMD for usable and successful outcomes, while also using verdict- and trigger-conditioned observations to qualify that recommendation.",
-      "latest_rationale": "Latest recommendation follows the current active answer(s) behind this objective. Structural basis: Obs. 4.2 \u2192 GMD; Obs. 4.1 \u2192 GMD; Obs. 4.4 \u2192 Third-Party. Current bottleneck family for GMD: reliability outcome.",
-      "first_optimization_target": "Preserve the strong outcome profile by focusing on reliable execution and stable environment setup in the trigger regimes where GMD is currently used.",
-      "fallback_feasibility_note": "If GMD is not feasible, keep the next closest style-level profile in mind and focus on the currently detected reliability outcome bottleneck.",
-      "structural_basis_observations": "Obs. 4.2, Obs. 4.1, Obs. 4.4"
+      "latest_bottleneck": "reliability_outcome",
+      "paper_rationale": "The paper combines usable-verdict rate, success rate among usable outcomes, and trigger-conditioned outcome context.",
+      "latest_rationale": "Latest recommendation comes from Obs. 4.1, Obs. 4.2, Obs. 4.4 using the current active answers in the refreshed catalog.",
+      "first_optimization_target": "Reliability preservation",
+      "improvement_suggestion": "Preserve the strong usable/success profile by focusing on failure prevention in the execution path and maintaining stable configuration.",
+      "basis_observations": "Obs. 4.1, Obs. 4.2, Obs. 4.4",
+      "literature_basis": "Profile-derived outcome guidance",
+      "snapshot_column": "ACTIVE_2026_03_27"
     },
     {
+      "rule_id": "overhead_led_optimization",
       "objective": "Overhead-placement-led optimization",
       "paper_recommendation": "GMD",
       "latest_snapshot_recommendation": "GMD",
-      "current_bottleneck": "execution_path",
-      "paper_rationale": "The paper's overhead guide is style-by-bottleneck rather than a single global winner; the repo flattens that into a primary recommended style plus a refreshed bottleneck-based lever.",
-      "latest_rationale": "Latest recommendation follows the refreshed overhead profile, with GMD selected from the current active overhead observation set. Structural basis: Obs. 3.1 \u2192 GMD; Obs. 3.2 \u2192 Third-Party; Obs. 3.3 \u2192 Custom; Obs. 3.4 \u2192 Custom. Current bottleneck family: execution path.",
-      "first_optimization_target": "Optimize the execution path itself: improve test efficiency, reduce flakes, simplify execution, and tune parallelization inside the managed-device workflow.",
-      "fallback_feasibility_note": "If GMD is not feasible, choose the style that shows the same bottleneck family in the latest overhead observations and focus on that execution path path first.",
-      "structural_basis_observations": "Obs. 3.1, Obs. 3.2, Obs. 3.3, Obs. 3.4"
+      "latest_bottleneck": "execution_path",
+      "paper_rationale": "The paper maps styles to dominant overhead placements and then translates those placements into first optimization targets.",
+      "latest_rationale": "Latest recommendation comes from Obs. 3.1, Obs. 3.2, Obs. 3.3, Obs. 3.4 using the current active answers in the refreshed catalog.",
+      "first_optimization_target": "Execution-centric optimization",
+      "improvement_suggestion": "Treat the problem as primarily execution-centric and focus on the execution path itself.",
+      "basis_observations": "Obs. 3.1, Obs. 3.2, Obs. 3.3, Obs. 3.4",
+      "literature_basis": "Profile-derived overhead guidance",
+      "snapshot_column": "ACTIVE_2026_03_27"
     }
   ]
 }
