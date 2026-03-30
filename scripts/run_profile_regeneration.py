@@ -20,9 +20,8 @@ if __name__ == "__main__":
         profile_narrative_md=Path("outputs/profiles/operational_profile_narrative.md"),
         decision_guide_md=Path("outputs/rules/decision_support_guide.md"),
         decision_guide_table_csv=Path("outputs/rules/decision_support_guide_table.csv"),
-        validation_notes_md=Path("outputs/reports/observation_validation_notes.md"),
-        measurement_structure_md=Path("outputs/reports/observation_measurement_structure.md"),
+        observation_measurement_structure_md=Path("outputs/reports/observation_measurement_structure.md"),
+        observation_validation_notes_md=Path("outputs/reports/observation_validation_notes.md"),
         coverage_snapshot_md=Path("outputs/reports/coverage_snapshot.md"),
-        rule_structure_md=Path("outputs/reports/decision_support_rule_structure.md"),
-        main_dataset_csv=Path("data/processed/MainDataset.csv"),
+        decision_support_rule_structure_md=Path("outputs/reports/decision_support_rule_structure.md"),
     )
