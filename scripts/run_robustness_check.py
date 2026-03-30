@@ -7,7 +7,7 @@ import pandas as pd
 from profile_qa.item_logic import evaluate_item, validate_stored_answer, normalize_style_answer
 
 STYLES = ["Community", "Custom", "GMD", "Third-Party"]
-KEY_OBS = ["Obs. 1.1", "Obs. 1.2", "Obs. 1.3", "Obs. 2.1", "Obs. 3.1", "Obs. 3.2", "Obs. 4.2", "Obs. 4.3"]
+KEY_OBS = ["Obs. 1.1", "Obs. 1.2", "Obs. 2.2", "Obs. 1.3", "Obs. 2.1", "Obs. 3.1", "Obs. 3.2", "Obs. 4.2", "Obs. 4.3"]
 MIN_TOTAL = 20
 MIN_STYLE_COUNT = 5
 MIN_STYLES_PRESENT = 2
