@@ -6,6 +6,8 @@ import csv
 import json
 import re
 
+from .item_logic import observation_logic_rows, observation_logic_for_obs
+
 
 def _read_csv_rows(path: Path) -> List[Dict[str, str]]:
     with path.open("r", encoding="utf-8", newline="") as f:
@@ -148,20 +150,6 @@ def _update_decision_support_table(guide_table_csv: Path, snapshot_col: str, cur
     return rows
 
 
-def _make_guide_table_md(rows: List[Dict[str, str]]) -> str:
-    headers = list(rows[0].keys())
-    lines = [
-        "# Decision-support guide table",
-        "",
-        "|" + "|".join(headers) + "|",
-        "|" + "|".join(["---"] * len(headers)) + "|",
-    ]
-    for row in rows:
-        lines.append("|" + "|".join(_norm(row.get(h, "")) for h in headers) + "|")
-    lines.append("")
-    return "\n".join(lines)
-
-
 def _make_profile_table_md(table_rows: List[Dict[str, str]]) -> str:
     headers = ["Style", "Speed profile", "Predictability", "Overhead source & lever", "Verdict & deployment"]
     lines = [
@@ -218,6 +206,73 @@ def _make_narrative_md(current_answers: Dict[str, str]) -> str:
     return "\n".join(lines)
 
 
+def _validation_interpretation(status: str, target: str, favored: str, active: str) -> str:
+    status = _norm(status)
+    target = _norm(target)
+    favored = _norm(favored)
+    active = _norm(active)
+    if status == "Passed":
+        if favored and target and favored != target:
+            return f"Current data shows {favored} as the nominally favored answer, but the evidence was not strong enough to replace the current answer {target}."
+        return f"Current data still supports {active or target} as the answer for this observation."
+    if status == "Failed":
+        if active and favored and active == favored:
+            return f"Current data no longer supported {target}; the answer was updated to {active}."
+        return f"Current data no longer supported the previous answer {target}."
+    if status == "Insufficient evidence":
+        return "Current data was not sufficient to confirm or replace the previous answer."
+    return "Validation status requires manual interpretation."
+
+
+def _make_observation_logic_md(rows: List[Dict[str, str]]) -> str:
+    lines = [
+        "# Observation logic reference",
+        "",
+        "This file explains the scoring/selection logic used for each observation in the refreshed operational-profile pipeline.",
+        "",
+    ]
+    for row in rows:
+        lines.append(f"## {row['obs_id']}")
+        lines.append("")
+        lines.append(f"- Item logic: {row['item_logic']}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _make_validation_notes_md(rows: List[Dict[str, str]], latest_cols: Dict[str, str | None]) -> str:
+    latest_target = latest_cols.get("target")
+    latest_validate = latest_cols.get("validate")
+    latest_note = latest_cols.get("note")
+    latest_favored = latest_cols.get("favored")
+    latest_favored_note = latest_cols.get("favored_note")
+    latest_active = latest_cols.get("active")
+
+    lines = [
+        "# Observation validation notes",
+        "",
+        "This file keeps the technical validation notes and favored-answer notes separate from the main operational profile.",
+        "",
+    ]
+    for row in rows:
+        obs_id = _norm(row.get("obs_id", ""))
+        lines.append(f"## {obs_id} — {_obs_question(row)}")
+        lines.append("")
+        if latest_target:
+            lines.append(f"- Target answer: `{_norm(row.get(latest_target, ''))}`")
+        if latest_validate:
+            lines.append(f"- Validation status: `{_norm(row.get(latest_validate, ''))}`")
+        if latest_favored:
+            lines.append(f"- Favored answer: `{_norm(row.get(latest_favored, ''))}`")
+        if latest_active:
+            lines.append(f"- Active answer: `{_norm(row.get(latest_active, ''))}`")
+        if latest_note:
+            lines.append(f"- Validation note: {_norm(row.get(latest_note, ''))}")
+        if latest_favored_note:
+            lines.append(f"- Favored-answer note: {_norm(row.get(latest_favored_note, ''))}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def regenerate_from_catalog(
     refreshed_catalog_csv: Path = Path("outputs/catalog/observation_qa_catalog_refreshed.csv"),
     profile_md: Path = Path("outputs/profiles/operational_profile.md"),
@@ -229,6 +284,8 @@ def regenerate_from_catalog(
     profile_narrative_md: Path = Path("outputs/profiles/operational_profile_narrative.md"),
     decision_guide_md: Path = Path("outputs/rules/decision_support_guide.md"),
     decision_guide_table_csv: Path = Path("outputs/rules/decision_support_guide_table.csv"),
+    observation_logic_md: Path = Path("outputs/reports/observation_logic.md"),
+    validation_notes_md: Path = Path("outputs/reports/observation_validation_notes.md"),
 ) -> None:
     rows = _read_csv_rows(refreshed_catalog_csv)
     if not rows:
@@ -244,6 +301,8 @@ def regenerate_from_catalog(
         profile_narrative_md,
         decision_guide_md,
         decision_guide_table_csv,
+        observation_logic_md,
+        validation_notes_md,
     ]:
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -251,28 +310,45 @@ def regenerate_from_catalog(
     latest_active = _latest_column("ACTIVE_", fieldnames)
     latest_validate = _latest_column("L1_validate_", fieldnames)
     latest_favored = _latest_column("L1_favored_answer_", fieldnames)
+    latest_target = _latest_column("L1_target_answer_", fieldnames)
+    latest_note = _latest_column("L1_note_", fieldnames)
+    latest_favored_note = _latest_column("L1_favored_note_", fieldnames)
     snapshot_col = latest_active or latest_validate or "latest_snapshot"
     current_answers = _build_current_answer_map(rows, latest_active)
 
-    profile_table_rows = [
-        _style_cell(style, current_answers)
-        for style in ["Community", "Custom", "GMD", "Third-Party"]
-    ]
+    profile_table_rows = [_style_cell(style, current_answers) for style in ["Community", "Custom", "GMD", "Third-Party"]]
     _write_csv_rows(profile_table_csv, profile_table_rows)
     profile_table_md.write_text(_make_profile_table_md(profile_table_rows), encoding="utf-8")
     profile_narrative_md.write_text(_make_narrative_md(current_answers), encoding="utf-8")
 
-    guide_rows = _update_decision_support_table(
-        decision_guide_table_csv,
-        snapshot_col,
-        current_answers,
-    )
+    guide_rows = _update_decision_support_table(decision_guide_table_csv, snapshot_col, current_answers)
     decision_guide_md.write_text(_make_decision_support_guide_md(guide_rows), encoding="utf-8")
+
+    logic_rows = []
+    for row in rows:
+        logic_rows.append({
+            "obs_id": _norm(row.get("obs_id", "")),
+            "item_logic": observation_logic_for_obs(_norm(row.get("obs_id", ""))),
+        })
+    observation_logic_md.write_text(_make_observation_logic_md(logic_rows), encoding="utf-8")
+
+    validation_notes_md.write_text(
+        _make_validation_notes_md(
+            rows,
+            {
+                "target": latest_target,
+                "validate": latest_validate,
+                "note": latest_note,
+                "favored": latest_favored,
+                "favored_note": latest_favored_note,
+                "active": latest_active,
+            },
+        ),
+        encoding="utf-8",
+    )
 
     profile_sections = ["# Refreshed operational profile", ""]
     current_rq = None
-    note_col = _latest_column("L1_note_", fieldnames)
-    favored_note_col = _latest_column("L1_favored_note_", fieldnames)
 
     for row in rows:
         rq = _rq_heading(row)
@@ -280,41 +356,25 @@ def regenerate_from_catalog(
             profile_sections.append(f"## {rq}")
             profile_sections.append("")
             current_rq = rq
-
         profile_sections.append(f"### Obs. {_obs_number(row)} — {_obs_question(row)}")
         profile_sections.append("")
         profile_sections.append(f"- Released answer: `{_norm(row.get('released_answer', ''))}`")
-
         if latest_validate:
             profile_sections.append(f"- Latest Layer 1 status: `{_norm(row.get(latest_validate, ''))}`")
         if latest_favored:
             profile_sections.append(f"- Statistically favored answer: `{_norm(row.get(latest_favored, ''))}`")
         if latest_active:
             profile_sections.append(f"- Current active answer: `{_norm(row.get(latest_active, ''))}`")
-        if note_col:
-            profile_sections.append(f"- Validation note: {_norm(row.get(note_col, ''))}")
-        if favored_note_col:
-            profile_sections.append(f"- Favored-answer note: {_norm(row.get(favored_note_col, ''))}")
-
+        profile_sections.append(
+            f"- Validation interpretation: {_validation_interpretation(_norm(row.get(latest_validate, '')) if latest_validate else '', _norm(row.get(latest_target, '')) if latest_target else '', _norm(row.get(latest_favored, '')) if latest_favored else '', _norm(row.get(latest_active, '')) if latest_active else '')}"
+        )
+        profile_sections.append(f"- Item logic reference: see `outputs/reports/observation_logic.md`.")
+        profile_sections.append(f"- Technical validation notes: see `outputs/reports/observation_validation_notes.md`.")
         profile_sections.append("")
-
     profile_md.write_text("\n".join(profile_sections), encoding="utf-8")
 
-    profile_json.write_text(
-        json.dumps(
-            {
-                "profile_table": profile_table_rows,
-                "observations": rows,
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-    rules_json.write_text(
-        json.dumps({"rules": guide_rows}, indent=2),
-        encoding="utf-8",
-    )
+    profile_json.write_text(json.dumps({"profile_table": profile_table_rows, "observations": rows}, indent=2), encoding="utf-8")
+    rules_json.write_text(json.dumps({"rules": guide_rows}, indent=2), encoding="utf-8")
 
     report_lines = [
         "# Latest refresh report",
@@ -327,7 +387,6 @@ def regenerate_from_catalog(
         "## Snapshot-level summary",
         "",
     ]
-
     passed = 0
     failed = 0
     for row in rows:
@@ -336,15 +395,17 @@ def regenerate_from_catalog(
             passed += 1
         elif status == "Failed":
             failed += 1
-
     report_lines.append(f"- Passed observations: {passed}")
     report_lines.append(f"- Failed observations: {failed}")
     report_lines.append("")
     report_lines.append("## Active answers")
     report_lines.append("")
-
     for row in rows:
-        report_lines.append(f"- {_norm(row.get('obs_id', ''))}: `{_norm(row.get(latest_active, ''))}`")
-
+        report_lines.append(f"- {_norm(row.get('obs_id',''))}: `{_norm(row.get(latest_active, ''))}`")
+    report_lines.append("")
+    report_lines.append("## Companion references")
+    report_lines.append("")
+    report_lines.append("- Observation logic reference: `outputs/reports/observation_logic.md`")
+    report_lines.append("- Technical validation notes: `outputs/reports/observation_validation_notes.md`")
     report_lines.append("")
     refresh_report_md.write_text("\n".join(report_lines), encoding="utf-8")

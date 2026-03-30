@@ -7,8 +7,8 @@ Latest favored-answer column: `L1_favored_answer_2026_03_27`
 
 ## Snapshot-level summary
 
-- Passed observations: 17
-- Failed observations: 0
+- Passed observations: 16
+- Failed observations: 1
 
 ## Active answers
 
@@ -29,3 +29,8 @@ Latest favored-answer column: `L1_favored_answer_2026_03_27`
 - Obs. 4.2: `GMD`
 - Obs. 4.3: `Yes`
 - Obs. 4.4: `Third-Party`
+
+## Companion references
+
+- Observation logic reference: `outputs/reports/observation_logic.md`
+- Technical validation notes: `outputs/reports/observation_validation_notes.md`
