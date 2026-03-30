@@ -56,8 +56,8 @@ jobs:
             outputs/rules/decision_support_guide.md \
             outputs/rules/decision_support_guide_table.csv \
             outputs/reports/latest_refresh_report.md \
-            outputs/reports/observation_logic.md \
             outputs/reports/observation_measurement_structure.md \
+            outputs/reports/coverage_snapshot.md \
             outputs/reports/observation_validation_notes.md
 
           git rm -f --ignore-unmatch \

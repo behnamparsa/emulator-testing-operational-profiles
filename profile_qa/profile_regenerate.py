@@ -280,6 +280,72 @@ def _make_validation_notes_md(rows: List[Dict[str, str]], latest_cols: Dict[str,
     return "\n".join(lines)
 
 
+
+
+def _style_order_key(style: str) -> tuple[int, str]:
+    order = {"Community": 0, "Custom": 1, "GMD": 2, "Third-Party": 3}
+    return (order.get(style, 999), style)
+
+
+def _is_truthy(value: str) -> bool:
+    return _norm(value).lower() in {"1", "true", "yes", "y"}
+
+
+def _make_coverage_snapshot_md(main_rows: List[Dict[str, str]]) -> str:
+    styles = sorted({ _norm(r.get("style", "")) for r in main_rows if _norm(r.get("style", "")) }, key=_style_order_key)
+
+    def is_base(row: Dict[str, str]) -> bool:
+        return _is_truthy(row.get("Base", ""))
+
+    def is_layer2(row: Dict[str, str]) -> bool:
+        return _norm(row.get("study_invocation_execution_window_selected_stage3_source", "")) != ""
+
+    full_rows = [r for r in main_rows if _norm(r.get("style", "")) in styles]
+    base_rows = [r for r in full_rows if is_base(r)]
+    layer2_rows = [r for r in base_rows if is_layer2(r)]
+
+    full_total = len(full_rows)
+    base_total = len(base_rows)
+    layer2_total = len(layer2_rows)
+
+    def pct(n: int, d: int) -> str:
+        return f"{(100.0 * n / d):.2f}%" if d else "N/A"
+
+    lines = [
+        "# Coverage snapshot",
+        "",
+        "This report summarizes the current processed-dataset coverage in the same spirit as the paper's coverage snapshot, with an added four-style breakdown.",
+        "",
+        "## Overall coverage",
+        "",
+        f"- Four-style analysis dataset: **{full_total}** executed run×style records.",
+        f"- Base controlled subset: **{base_total}** records (`Base = True`, first-attempt usable-verdict records).",
+        f"- Layer 1 coverage: effectively **{full_total}/{full_total} (100.00%)** on the four-style dataset because Layer 1 is derived from run/job telemetry.",
+        f"- Layer 2 observable within Base: **{layer2_total}/{base_total} ({pct(layer2_total, base_total)})**.",
+        "",
+        "## Breakdown by style",
+        "",
+        "|Style|Four-style dataset|Base subset|Base as % of style total|Layer 2 observable in Base|Layer 2 coverage within Base|",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+
+    for style in styles:
+        full_n = sum(1 for r in full_rows if _norm(r.get("style", "")) == style)
+        base_n = sum(1 for r in base_rows if _norm(r.get("style", "")) == style)
+        layer2_n = sum(1 for r in layer2_rows if _norm(r.get("style", "")) == style)
+        lines.append(f"|{style}|{full_n}|{base_n}|{pct(base_n, full_n)}|{layer2_n}|{pct(layer2_n, base_n)}|")
+
+    lines.extend([
+        "",
+        "## Interpretation",
+        "",
+        "- The four-style dataset counts all executed run×style records currently represented in `MainDataset.csv` for Community, Custom, GMD, and Third-Party.",
+        "- The Base subset matches the repo's controlled timing-comparison regime (`Base = True`).",
+        "- Layer 2 observability is counted using the presence of the selected Stage 3 invocation-window telemetry source, which is the practical repo-side indicator that the step-level timing decomposition is available.",
+        "",
+    ])
+    return "\n".join(lines)
+
 def regenerate_from_catalog(
     refreshed_catalog_csv: Path = Path("outputs/catalog/observation_qa_catalog_refreshed.csv"),
     profile_md: Path = Path("outputs/profiles/operational_profile.md"),
@@ -291,9 +357,10 @@ def regenerate_from_catalog(
     profile_narrative_md: Path = Path("outputs/profiles/operational_profile_narrative.md"),
     decision_guide_md: Path = Path("outputs/rules/decision_support_guide.md"),
     decision_guide_table_csv: Path = Path("outputs/rules/decision_support_guide_table.csv"),
-    observation_logic_md: Path = Path("outputs/reports/observation_logic.md"),
     validation_notes_md: Path = Path("outputs/reports/observation_validation_notes.md"),
     measurement_structure_md: Path = Path("outputs/reports/observation_measurement_structure.md"),
+    coverage_snapshot_md: Path = Path("outputs/reports/coverage_snapshot.md"),
+    main_dataset_csv: Path = Path("data/processed/MainDataset.csv"),
 ) -> None:
     rows = _read_csv_rows(refreshed_catalog_csv)
     if not rows:
@@ -309,9 +376,9 @@ def regenerate_from_catalog(
         profile_narrative_md,
         decision_guide_md,
         decision_guide_table_csv,
-        observation_logic_md,
         validation_notes_md,
         measurement_structure_md,
+        coverage_snapshot_md,
     ]:
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -336,8 +403,10 @@ def regenerate_from_catalog(
     logic_rows = []
     for row in rows:
         logic_rows.append(observation_structure_for_obs(_norm(row.get("obs_id", ""))))
-    observation_logic_md.write_text(_make_observation_logic_md(logic_rows), encoding="utf-8")
     measurement_structure_md.write_text(_make_observation_logic_md(logic_rows), encoding="utf-8")
+
+    main_rows = _read_csv_rows(main_dataset_csv)
+    coverage_snapshot_md.write_text(_make_coverage_snapshot_md(main_rows), encoding="utf-8")
 
     validation_notes_md.write_text(
         _make_validation_notes_md(
@@ -412,8 +481,8 @@ def regenerate_from_catalog(
     report_lines.append("")
     report_lines.append("## Companion references")
     report_lines.append("")
-    report_lines.append("- Observation logic reference: `outputs/reports/observation_logic.md`")
     report_lines.append("- Observation measurement structure: `outputs/reports/observation_measurement_structure.md`")
+    report_lines.append("- Coverage snapshot: `outputs/reports/coverage_snapshot.md`")
     report_lines.append("- Technical validation notes: `outputs/reports/observation_validation_notes.md`")
     report_lines.append("")
     refresh_report_md.write_text("\n".join(report_lines), encoding="utf-8")

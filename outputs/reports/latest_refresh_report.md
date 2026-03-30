@@ -32,6 +32,6 @@ Latest favored-answer column: `L1_favored_answer_2026_03_27`
 
 ## Companion references
 
-- Observation logic reference: `outputs/reports/observation_logic.md`
 - Observation measurement structure: `outputs/reports/observation_measurement_structure.md`
+- Coverage snapshot: `outputs/reports/coverage_snapshot.md`
 - Technical validation notes: `outputs/reports/observation_validation_notes.md`
