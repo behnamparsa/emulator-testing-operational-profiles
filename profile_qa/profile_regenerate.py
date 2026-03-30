@@ -471,13 +471,13 @@ def _make_decision_support_guide_md(rule_rows: List[Dict[str, str]]) -> str:
         lines.append("")
         lines.append(f"- Paper baseline recommendation: **{row['paper_recommendation']}**")
         lines.append(f"- Latest snapshot recommendation: **{row['latest_snapshot_recommendation']}**")
-        lines.append(f"- Why this recommendation: {row['latest_rationale']}")
         lines.append(f"- Current bottleneck emphasis: **{row['latest_bottleneck']}**")
         lines.append(f"- First optimization target: **{row['first_optimization_target']}**")
         lines.append(f"- Improvement suggestion: {row['improvement_suggestion']}")
         lines.append("")
 
     return "\n".join(lines)
+
 
 
 def _make_decision_support_rule_structure_md() -> str:
