@@ -3,7 +3,8 @@ name: 000_Master_Orchestrator_Scheduleder_MainPiplines_Refresh
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 3 1 1,7,10 *"
+    - cron: "0 3 1 1,4,7,10 *"
+    
 
 permissions:
   actions: write
