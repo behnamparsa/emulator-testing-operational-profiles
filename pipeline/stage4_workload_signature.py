@@ -13,10 +13,10 @@ Current-plan alignment
 4) Prefers effective_ref_for_stage4 from Stage 3 run-level output
    - falls back to head_sha if needed
 5) Skips Stage 3 rows with explicit stage3_error where possible
-6) Emits BOTH base and full signature hashes
-   - base: OS + jobs + steps
-   - full: OS + jobs + steps + suite size
-   - signature_hash remains the FULL hash for backward compatibility
+6) Emits base, base_exec, and full signature hashes
+   - base: OS + regular jobs + regular steps
+   - base_exec: OS + executed jobs + executed steps
+   - full: OS + regular jobs + regular steps + suite size
 7) Keeps stricter numeric parsing and safer source selection
 8) Keeps YAML runs-on parsing fallback
 9) Keeps optional bounded artifact parsing for junit_cases / test_suite_size_bucket
@@ -24,17 +24,25 @@ Current-plan alignment
 Interpretation
 - Stage 4 remains style-agnnostic
 - It fingerprints workload structure, not Layer 1 or Layer 2 timing definitions
-- Therefore the signature logic remains based on:
+- Base signature uses ONLY:
     runner_os_bucket
     job_count_total_bucket
     step_count_total_bucket
-    test_suite_size_bucket (full signature only)
+- Base-exec signature uses ONLY:
+    runner_os_bucket
+    job_count_exec_bucket
+    step_count_exec_bucket
+  and only when both exec counts are available from steps telemetry
+- Full signature uses:
+    runner_os_bucket
+    job_count_total_bucket
+    step_count_total_bucket
+    test_suite_size_bucket
 
 Important note
 - The current study changed Stage 3 Layer-2 timing outputs
 - The study also dropped instrumentation-specific conclusion as a study field
 - Stage 4 does NOT use those timing fields or any instrumentation-conclusion field
-- Stage 4 continues to fingerprint the overall executed workload structure of the run
 
 Inputs (ROOT_DIR):
 - run_metrics_v16_stage3_enhanced.csv
@@ -817,30 +825,30 @@ def main() -> None:
                 runner_os_bucket = yaml_runner_bucket
                 runner_os_source = "yaml" if yaml_runner_bucket != "unknown" else "unknown"
 
-        # job count source selection
+        # -------------------------------------------------
+        # CLEAN REGULAR COUNTS (NON-EXEC)
+        # -------------------------------------------------
+        # total jobs: regular/run-level only; no fallback to executed jobs
         job_count_total = None
         job_count_raw = first_nonempty(r, ["job_count_total", "jobs_total", "total_jobs", "jobs_count"])
         job_count_total = parse_int_strict(job_count_raw)
-
-        if job_count_total is None and jobs_by_run.get(run_key):
-            job_count_total = len(jobs_by_run[run_key])
-
         job_count_total_bucket = bucket_job_count(job_count_total)
 
-        # dedup executed steps from duplicated run×style step rows
+        # declared steps: YAML only; no fallback to executed steps
+        step_count_decl_bucket = bucket_step_count(step_count_decl) if step_count_decl is not None else "unknown"
+        step_count_total_bucket = step_count_decl_bucket if step_count_decl is not None else "unknown"
+        step_count_source = "declared" if step_count_decl is not None else "unknown"
+
+        # -------------------------------------------------
+        # CLEAN EXEC COUNTS (EXECUTED ONLY)
+        # -------------------------------------------------
+        # executed job count: step telemetry only
+        job_count_exec = len(jobs_by_run[run_key]) if jobs_by_run.get(run_key) else None
+        job_count_exec_bucket = bucket_job_count(job_count_exec) if job_count_exec is not None else "unknown"
+
+        # executed step count: deduplicated executed step telemetry only
         unique_step_count_exec = len(unique_steps_by_run.get(run_key, set())) if unique_steps_by_run.get(run_key) else None
         step_count_exec_bucket = bucket_step_count(unique_step_count_exec) if unique_step_count_exec is not None else "unknown"
-        step_count_decl_bucket = bucket_step_count(step_count_decl) if step_count_decl is not None else "unknown"
-
-        if unique_step_count_exec is not None:
-            step_count_total_bucket = step_count_exec_bucket
-            step_count_source = "executed_dedup"
-        elif step_count_decl is not None:
-            step_count_total_bucket = step_count_decl_bucket
-            step_count_source = "declared"
-        else:
-            step_count_total_bucket = "unknown"
-            step_count_source = "unknown"
 
         # optional bounded artifact parse
         junit_cases = None
@@ -869,6 +877,20 @@ def main() -> None:
         ])
         signature_hash_base = hashlib.sha256(sig_basis_base.encode("utf-8", errors="ignore")).hexdigest()[:16]
 
+        # exec base signature only when both exec counts are available
+        if job_count_exec is not None and unique_step_count_exec is not None:
+            sig_basis_base_exec = "\n".join([
+                f"runner_os_bucket={runner_os_bucket}",
+                f"job_count_exec_bucket={job_count_exec_bucket}",
+                f"step_count_exec_bucket={step_count_exec_bucket}",
+            ])
+            signature_hash_base_exec = hashlib.sha256(
+                sig_basis_base_exec.encode("utf-8", errors="ignore")
+            ).hexdigest()[:16]
+        else:
+            sig_basis_base_exec = ""
+            signature_hash_base_exec = ""
+
         sig_basis_full = "\n".join([
             f"runner_os_bucket={runner_os_bucket}",
             f"job_count_total_bucket={job_count_total_bucket}",
@@ -893,6 +915,9 @@ def main() -> None:
             "job_count_total": str(job_count_total) if job_count_total is not None else "",
             "job_count_total_bucket": job_count_total_bucket,
 
+            "job_count_exec": str(job_count_exec) if job_count_exec is not None else "",
+            "job_count_exec_bucket": job_count_exec_bucket,
+
             "step_count_exec": str(unique_step_count_exec) if unique_step_count_exec is not None else "",
             "step_count_exec_bucket": step_count_exec_bucket,
             "step_count_decl": str(step_count_decl) if step_count_decl is not None else "",
@@ -906,6 +931,10 @@ def main() -> None:
 
             "sig_basis_base": sig_basis_base,
             "signature_hash_base": signature_hash_base,
+
+            "sig_basis_base_exec": sig_basis_base_exec,
+            "signature_hash_base_exec": signature_hash_base_exec,
+
             "sig_basis_full": sig_basis_full,
             "signature_hash_full": signature_hash_full,
             "signature_hash": signature_hash_full,
@@ -918,18 +947,19 @@ def main() -> None:
         "signature_inputs",
         "runner_os_bucket", "runner_os_source",
         "job_count_total", "job_count_total_bucket",
+        "job_count_exec", "job_count_exec_bucket",
         "step_count_exec", "step_count_exec_bucket",
         "step_count_decl", "step_count_decl_bucket",
         "step_count_source", "step_count_total_bucket",
         "junit_cases", "junit_source", "test_suite_size_bucket",
         "sig_basis_base", "signature_hash_base",
+        "sig_basis_base_exec", "signature_hash_base_exec",
         "sig_basis_full", "signature_hash_full",
-        "signature_hash",
         "stage4_extracted_at_utc",
     ]
 
     write_csv(OUT_STAGE4_SIGNATURE_CSV, out_fields, out_rows)
-    print("[done] Stage 4 signature (current study plan, Stage3-only, base+full, dedup-adjusted):", OUT_STAGE4_SIGNATURE_CSV)
+    print("[done] Stage 4 signatures (base + base_exec + full):", OUT_STAGE4_SIGNATURE_CSV)
 
 
 if __name__ == "__main__":
