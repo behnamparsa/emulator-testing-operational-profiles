@@ -330,7 +330,7 @@ def _make_coverage_snapshot_md(main_rows: List[Dict[str, str]]) -> str:
     styles = sorted({_norm(r.get("style", "")) for r in main_rows if _norm(r.get("style", ""))}, key=_style_order_key)
 
     def is_base(row: Dict[str, str]) -> bool:
-        return _is_truthy(row.get("Base", ""))
+        return _is_truthy(row.get("Base_timing_regime", row.get("Base", "")))
 
     def is_layer2(row: Dict[str, str]) -> bool:
         return _norm(row.get("study_invocation_execution_window_selected_stage3_source", "")) != ""
@@ -365,7 +365,7 @@ def _make_coverage_snapshot_md(main_rows: List[Dict[str, str]]) -> str:
         "## Overall coverage",
         "",
         f"- Four-style analysis dataset: **{full_total}** executed run×style records.",
-        f"- Base controlled subset: **{base_total}** records (`Base = True`, first-attempt usable-verdict records).",
+        f"- Base controlled subset: **{base_total}** records (`Base_timing_regime = True`, first-attempt usable-verdict records).",
         f"- Layer 1 coverage: effectively **{full_total}/{full_total} (100.00%)** on the four-style dataset because Layer 1 is derived from run/job telemetry.",
         f"- Layer 1 time coverage: **{layer1_start} to {layer1_end}** (`run_started_at` range for the four-style dataset).",
         f"- Layer 2 observable within Base: **{layer2_total}/{base_total} ({pct(layer2_total, base_total)})**.",
@@ -388,7 +388,7 @@ def _make_coverage_snapshot_md(main_rows: List[Dict[str, str]]) -> str:
         "## Interpretation",
         "",
         "- The four-style dataset counts all executed run×style records currently represented in `MainDataset.csv` for Community, Custom, GMD, and Third-Party.",
-        "- The Base subset matches the repo's controlled timing-comparison regime (`Base = True`).",
+        "- The Base subset matches the repo's controlled timing-comparison regime (`Base_timing_regime = True`).",
         "- Layer 1 time coverage is derived from run/job telemetry and therefore spans the full four-style analysis dataset.",
         "- Layer 2 observability is counted using the presence of the selected Stage 3 invocation-window telemetry source, which is the practical repo-side indicator that the step-level timing decomposition is available.",
         "- The narrower Layer 2 time window reflects the fact that directly observable step-level telemetry is available only for a later and smaller subset of Base.",

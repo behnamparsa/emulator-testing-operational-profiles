@@ -5,12 +5,12 @@ from typing import Dict, List, Optional
 import csv
 
 SOURCE_PAPER_CANDIDATES = [
+    Path("data/Source_Paper/Emulator_Testing_Paper2_IPM_latest.pdf"),
+    Path("data/Source_Paper/Emulator_Testing_Paper2_IPM_latest.PDF"),
     Path("data/Source_Paper/Emulator_Testing_MSR_2026_Modified_RQ3B_Extension.pdf"),
     Path("data/Source_Paper/Emulator_Testing_MSR_2026_Modified_RQ3B_Extension.PDF"),
 ]
 
-# Lean baseline catalog: keep only the stable paper-derived fields that are
-# required by the single-layer analytical pipeline.
 OBSERVATION_DEFS: List[Dict[str, str]] = [
     {"rq_id": "RQ1", "rq_title": "Speed profiling", "obs_id": "Obs. 1.1", "obs_number": "1.1", "obs_title": "Community is the fastest overall operational profile", "question": "Which style is the fastest overall operational profile?", "released_answer": "Community"},
     {"rq_id": "RQ1", "rq_title": "Speed profiling", "obs_id": "Obs. 1.2", "obs_number": "1.2", "obs_title": "GMD reaches the instrumentation path fastest, but does not finish fastest", "question": "Which style shows the clearest fast-entry profile without being the fastest overall finisher?", "released_answer": "GMD"},
@@ -27,35 +27,22 @@ OBSERVATION_DEFS: List[Dict[str, str]] = [
     {"rq_id": "RQ3", "rq_title": "Overhead composition and actionable levers", "obs_id": "Obs. 3.4", "obs_number": "3.4", "obs_title": "Custom remains a cautious, tail-heavy mixed case", "question": "Which style remains a cautious tail-heavy mixed overhead case?", "released_answer": "Custom"},
     {"rq_id": "RQ4", "rq_title": "Deployment context and run-level verdict usability", "obs_id": "Obs. 4.1", "obs_number": "4.1", "obs_title": "Styles differ in usable run-level verdict rates, although the overall separation is modest", "question": "Which style currently has the strongest usable run-level verdict rate?", "released_answer": "GMD"},
     {"rq_id": "RQ4", "rq_title": "Deployment context and run-level verdict usability", "obs_id": "Obs. 4.2", "obs_number": "4.2", "obs_title": "Among usable verdicts, styles differ sharply in success rate", "question": "Which style currently has the strongest success rate among usable verdicts?", "released_answer": "GMD"},
-    {"rq_id": "RQ4", "rq_title": "Deployment context and run-level verdict usability", "obs_id": "Obs. 4.3", "obs_number": "4.3", "obs_title": "Styles are deployed in markedly different CI trigger contexts", "question": "Do the styles remain deployed in markedly different CI trigger contexts?", "released_answer": "Yes"},
-    {"rq_id": "RQ4", "rq_title": "Deployment context and run-level verdict usability", "obs_id": "Obs. 4.4", "obs_number": "4.4", "obs_title": "For Third-Party and Custom, success rate is strongly trigger-conditioned", "question": "Which styles remain strongly trigger-conditioned in success behavior?", "released_answer": "Third-Party and Custom"},
+    {"rq_id": "RQ4", "rq_title": "Deployment context and run-level verdict usability", "obs_id": "Obs. 4.3", "obs_number": "4.3", "obs_title": "GMD is the clearest schedule-triggered deployment profile", "question": "Which style is most strongly associated with schedule-triggered deployment?", "released_answer": "GMD"},
+    {"rq_id": "RQ4", "rq_title": "Deployment context and run-level verdict usability", "obs_id": "Obs. 4.4", "obs_number": "4.4", "obs_title": "Third-Party shows the clearest trigger-conditioned outcome behavior", "question": "Which style remains most strongly trigger-conditioned in outcome behavior?", "released_answer": "Third-Party"},
 ]
-
 
 def locate_source_paper() -> Path:
     for candidate in SOURCE_PAPER_CANDIDATES:
         if candidate.exists():
             return candidate
-    raise FileNotFoundError(
-        "Could not locate the source paper PDF. Expected one of: "
-        + ", ".join(str(p) for p in SOURCE_PAPER_CANDIDATES)
-    )
-
+    raise FileNotFoundError("Could not locate source paper PDF.")
 
 def catalog_rows(source_paper_path: Optional[Path] = None) -> List[Dict[str, str]]:
-    # The single-layer analytical pipeline uses a lean baseline catalog. The
-    # source paper path remains discoverable via locate_source_paper(), but the
-    # catalog itself stores only the stable row identity, question, and baseline
-    # released answer.
     _ = source_paper_path or locate_source_paper()
     return [dict(row) for row in OBSERVATION_DEFS]
 
-
 def write_catalog_csv(out_csv: Path, source_paper_path: Optional[Path] = None) -> None:
     rows = catalog_rows(source_paper_path=source_paper_path)
-    if not rows:
-        raise RuntimeError("No observation rows were generated for the QA catalog.")
-
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = list(rows[0].keys())
     with out_csv.open("w", encoding="utf-8", newline="") as f:

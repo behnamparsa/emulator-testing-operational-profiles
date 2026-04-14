@@ -7,7 +7,7 @@ import pandas as pd
 from scipy.stats import chi2_contingency, kruskal, mannwhitneyu
 
 
-STYLE_ORDER = ["Community", "Custom", "GMD", "Third-Party"]
+STYLE_ORDER = ["Community", "GMD", "Third-Party", "Custom"]
 STYLE_SET = set(STYLE_ORDER)
 
 ALPHA = 0.05
@@ -261,7 +261,7 @@ def find_col(df: pd.DataFrame, candidates: Sequence[str]) -> Optional[str]:
 
 
 def base_subset(df: pd.DataFrame) -> pd.DataFrame:
-    for c in ["base_flag", "is_base", "base", "Base"]:
+    for c in ["Base_timing_regime", "base_flag", "is_base", "base", "Base"]:
         if c in df.columns:
             vals = df[c].astype(str).str.lower()
             subset = df[vals.isin(["1", "true", "yes", "y"])]
@@ -277,6 +277,12 @@ def base_subset(df: pd.DataFrame) -> pd.DataFrame:
 
 def first_attempt_subset(df: pd.DataFrame) -> pd.DataFrame:
     tmp = df.copy()
+    for c in ["controller_attempt_eq_1", "FirstAttempt", "first_attempt"]:
+        if c in tmp.columns:
+            vals = tmp[c].astype(str).str.lower()
+            subset = tmp[vals.isin(["1", "true", "yes", "y"])]
+            if not subset.empty:
+                return subset.copy()
     if "run_attempt" in tmp.columns:
         tmp = tmp[pd.to_numeric(tmp["run_attempt"], errors="coerce").fillna(0).eq(1)]
     return tmp
@@ -419,7 +425,7 @@ def _metric_columns(df_base: pd.DataFrame) -> Dict[str, Optional[str]]:
     return {
         "run_duration": find_col(df_base, ["study_run_duration_seconds", "run_duration_seconds", "run_duration"]),
         "entry": find_col(df_base, ["study_pre_invocation_selected_stage3_seconds", "study_pre_invocation_direct_seconds", "pre_invocation_seconds", "pre_invocation"]),
-        "time_to_envelope": find_col(df_base, ["study_time_to_instrumentation_envelope_seconds", "time_to_instrumentation_envelope_seconds"]),
+        "time_to_envelope": find_col(df_base, ["study_layer1_time_to_instrumentation_envelope_seconds", "study_time_to_instrumentation_envelope_seconds", "time_to_instrumentation_envelope_seconds"]),
         "envelope": find_col(df_base, ["study_layer1_instrumentation_job_envelope_seconds", "instrumentation_job_envelope_seconds"]),
         "execution": find_col(df_base, ["study_invocation_execution_window_selected_stage3_seconds", "study_invocation_execution_window_direct_seconds", "invocation_execution_window_seconds", "execution_window_seconds", "invocation_execution_window"]),
         "post": find_col(df_base, ["study_post_invocation_selected_stage3_seconds", "study_post_invocation_direct_seconds", "post_invocation_seconds", "post_invocation"]),
@@ -520,7 +526,14 @@ def evaluate_item(obs_id: str, question: str, df: pd.DataFrame) -> EvalResult:
         return EvalResult(_winner_from_scores(scores, False), "Primary measurement: success rate among usable verdicts; winner = highest rate.", scores, categorical_mode="success_among_usable", metric_used="success_among_usable")
 
     if obs_id == "Obs. 4.3":
-        return EvalResult("Yes", "Primary measurement: trigger-context differentiation; validate a Yes/No claim with chi-square.", {}, categorical_mode="trigger_context_differentiation", metric_used="trigger_context_differentiation")
+        tmp = first_attempt_subset(df).copy()
+        trigger_col = find_col(tmp, ["event", "trigger"])
+        scores = {}
+        if trigger_col and "style" in tmp.columns:
+            tmp["__schedule_flag"] = tmp[trigger_col].astype(str).str.strip().str.lower().replace({"workflow_dispatch": "other"}).eq("schedule").astype(int)
+            rates = tmp.groupby("style")["__schedule_flag"].mean().to_dict()
+            scores = {str(k): float(v) for k, v in rates.items() if pd.notna(v)}
+        return EvalResult(_winner_from_scores(scores, False), "Primary measurement: schedule-triggered deployment share on first-attempt runs; winner = highest schedule share.", scores, categorical_mode="schedule_trigger_share", metric_used="schedule_trigger_share")
 
     if obs_id == "Obs. 4.4":
         scores = _categorical_rate_scores(df_rq4, "trigger_conditioned_spread")
@@ -536,31 +549,32 @@ def validate_stored_answer(row: Dict[str, str], df: pd.DataFrame, stored_answer:
         return "Insufficient evidence", result.note, result
 
     stored_styles = normalize_style_answer(stored_answer)
+    current_style = stored_styles[0] if stored_styles else norm(stored_answer)
     if obs_id == "Obs. 4.3":
-        tmp = first_attempt_subset(df)
+        tmp = first_attempt_subset(df).copy()
         trigger_col = find_col(tmp, ["event", "trigger"])
         if not trigger_col or "style" not in tmp.columns:
-            return "Insufficient evidence", "Missing style/event data for trigger-context validation.", result
-        table = pd.crosstab(tmp["style"], tmp[trigger_col])
+            return "Insufficient evidence", "Missing style/event data for schedule-trigger validation.", result
+        tmp["__trigger_norm"] = tmp[trigger_col].astype(str).str.strip().str.lower().replace({"workflow_dispatch": "other"})
+        table = pd.crosstab(tmp["style"], tmp["__trigger_norm"])
         if table.shape[0] < 2 or table.shape[1] < 2:
             return "Insufficient evidence", "Not enough style/event diversity for chi-square validation.", result
         chi2, p, _, _ = chi2_contingency(table)
         v = _cramers_v_from_table(table, chi2)
-        current = norm(stored_answer).lower() in {"yes", "true"}
-        supported = p < ALPHA and v >= MIN_CRAMERS_V
-        fail = (current and not supported) or ((not current) and supported)
-        status = "Failed" if fail else "Passed"
-        note = f"Chi-square on style × {trigger_col}: p={p:.3g}, Cramer's V={v:.3f}; stored answer='{stored_answer}'."
-        return status, note, result
+        ordered = sorted(result.score_by_style.items(), key=lambda kv: (-kv[1], kv[0]))
+        top_gap = ordered[0][1] - ordered[1][1] if len(ordered) >= 2 else 0.0
+        fail = result.winner != current_style and p < ALPHA and v >= MIN_CRAMERS_V and top_gap > 0.01
+        note = f"Chi-square on style × {trigger_col}: p={p:.3g}, Cramer's V={v:.3f}; schedule-share winner='{result.winner}', stored='{current_style}', top_gap={top_gap:.4f}."
+        return ("Failed" if fail else "Passed"), note, result
 
     if not stored_styles:
         stored_styles = [norm(stored_answer)] if norm(stored_answer) else []
-    current_style = stored_styles[0] if stored_styles else ""
+        current_style = stored_styles[0] if stored_styles else ""
     if current_style not in STYLE_SET:
         return "Insufficient evidence", f"Stored answer '{stored_answer}' is not a recognized single-style target.", result
 
     # categorical modes
-    if result.categorical_mode in {"usable_verdict_rate", "success_among_usable", "trigger_conditioned_spread"}:
+    if result.categorical_mode in {"usable_verdict_rate", "success_among_usable", "trigger_conditioned_spread", "schedule_trigger_share"}:
         winner = result.winner
         scores = result.score_by_style
         tmp = first_attempt_subset(df).copy()
@@ -574,6 +588,9 @@ def validate_stored_answer(row: Dict[str, str], df: pd.DataFrame, stored_answer:
             return ("Failed" if fail else "Passed"), note + f" {result.note}", result
         if result.categorical_mode == "usable_verdict_rate":
             tmp["flag"] = tmp["run_conclusion"].isin(["success", "failure"]).astype(int)
+        elif result.categorical_mode == "schedule_trigger_share":
+            trigger_col = find_col(tmp, ["event", "trigger"])
+            tmp["flag"] = tmp[trigger_col].astype(str).str.strip().str.lower().replace({"workflow_dispatch": "other"}).eq("schedule").astype(int)
         else:
             tmp = tmp[tmp["run_conclusion"].isin(["success", "failure"])]
             tmp["flag"] = tmp["run_conclusion"].eq("success").astype(int)
