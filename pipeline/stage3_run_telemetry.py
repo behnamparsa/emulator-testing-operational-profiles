@@ -2427,6 +2427,40 @@ per_style_fields = [
     "inferred_styles_all",
 ] + STYLE_METRIC_KEYS + ["stage3_extracted_at_utc"]
 
+def trim_stage3_false_positives(path: Path) -> Tuple[int, int, int]:
+    rows = read_csv_rows(path)
+    before = len(rows)
+
+    kept = []
+    removed = 0
+
+    for r in rows:
+        invocation_execution_window_seconds = safe_int_from_str(r.get("invocation_execution_window_seconds"))
+        matched_invocation_source = norm(r.get("matched_invocation_source"))
+        invocation_execution_end_source = norm(r.get("invocation_execution_end_source"))
+        explicit_instru_candidate_count = safe_int_from_str(r.get("explicit_instru_candidate_count"))
+        execution_window_candidate_count = safe_int_from_str(r.get("execution_window_candidate_count"))
+
+        should_trim = (
+            invocation_execution_window_seconds == 0
+            and matched_invocation_source == "stage1_anchor_match"
+            and invocation_execution_end_source == "invocation_step_terminal"
+            and (explicit_instru_candidate_count or 0) == 0
+            and (execution_window_candidate_count or 0) == 0
+        )
+
+        if should_trim:
+            removed += 1
+        else:
+            kept.append(r)
+
+    after = len(kept)
+
+    if rows:
+        fieldnames = list(rows[0].keys())
+        write_csv(path, fieldnames, kept)
+
+    return before, removed, after
 
 # =========================
 # Main
