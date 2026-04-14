@@ -2573,9 +2573,15 @@ def main():
     write_csv(OUT_STAGE3A_RUNS_CSV, out_fieldnames_3a, run_level_rows)
     write_csv(OUT_STAGE3C_RUN_PER_STYLE_CSV, per_style_fields, all_per_style_rows)
 
+    trim_before, trim_removed, trim_after = trim_stage3_false_positives(OUT_STAGE3C_RUN_PER_STYLE_CSV)
+
     print("[info] Stage 3 input rows before any filter:", total_rows_before_filter)
     print("[info] Stage 3 rows after run_id/style filter:", total_rows_after_runid_filter)
     print("[info] Stage 3 rows after executed-run filter (style_instru_job_count > 0):", total_rows_after_exec_filter)
+
+    print("[info] Stage 3 trim patch rows before:", trim_before)
+    print("[info] Stage 3 trim patch rows removed:", trim_removed)
+    print("[info] Stage 3 trim patch rows after:", trim_after)
 
     print("[done] Run metrics:", OUT_STAGE3A_RUNS_CSV)
     print("[done] Step breakdown:", OUT_STAGE3B_STEPS_CSV)
