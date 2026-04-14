@@ -160,10 +160,10 @@ For the structural definition of each observation's normalized measurement and v
 
 - Paper baseline answer: `Yes`
 - Current baseline under validation: `Yes`
-- Latest Layer 1 status: `Passed`
-- Statistically favored answer: `Yes`
-- Current active answer: `Yes`
-- Validation interpretation: Current data still supports Yes as the answer for this observation.
+- Latest Layer 1 status: `Failed`
+- Statistically favored answer: `GMD`
+- Current active answer: `GMD`
+- Validation interpretation: Current data no longer supported Yes; the answer was updated to GMD.
 - Robustness check: `supported_statistically`
 
 ### Obs. 4.4 — Which styles remain strongly trigger-conditioned in success behavior?

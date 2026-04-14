@@ -12,7 +12,7 @@
       "improvement_suggestion": "Focus first on execution efficiency inside the main execution path, including test efficiency, parallelization, flake reduction, and execution simplification.",
       "basis_observations": "Obs. 2.1, Obs. 2.2",
       "literature_basis": "Profile-derived plus literature-backed execution-centric guidance",
-      "snapshot_column": "ACTIVE_2026_03_27"
+      "snapshot_column": "ACTIVE_2026_04_14"
     },
     {
       "rule_id": "fast_first_signal",
@@ -26,7 +26,7 @@
       "improvement_suggestion": "Minimize pre-invocation setup and keep the entry path lightweight and reproducible.",
       "basis_observations": "Obs. 1.2",
       "literature_basis": "Profile-derived fast-entry guidance",
-      "snapshot_column": "ACTIVE_2026_03_27"
+      "snapshot_column": "ACTIVE_2026_04_14"
     },
     {
       "rule_id": "fastest_typical_completion",
@@ -40,7 +40,7 @@
       "improvement_suggestion": "Stabilize entry/setup variability and reduce execution-path cost; then inspect the remaining residual tail.",
       "basis_observations": "Obs. 1.1",
       "literature_basis": "Profile-derived fastest-overall guidance",
-      "snapshot_column": "ACTIVE_2026_03_27"
+      "snapshot_column": "ACTIVE_2026_04_14"
     },
     {
       "rule_id": "usable_successful_outcomes",
@@ -54,7 +54,7 @@
       "improvement_suggestion": "Preserve the strong usable/success profile by focusing on failure prevention in the execution path and maintaining stable configuration.",
       "basis_observations": "Obs. 4.1, Obs. 4.2, Obs. 4.4",
       "literature_basis": "Profile-derived outcome guidance",
-      "snapshot_column": "ACTIVE_2026_03_27"
+      "snapshot_column": "ACTIVE_2026_04_14"
     },
     {
       "rule_id": "overhead_led_optimization",
@@ -68,7 +68,7 @@
       "improvement_suggestion": "Treat the problem as primarily execution-centric and focus on the execution path itself.",
       "basis_observations": "Obs. 3.1, Obs. 3.2, Obs. 3.3, Obs. 3.4",
       "literature_basis": "Profile-derived overhead guidance",
-      "snapshot_column": "ACTIVE_2026_03_27"
+      "snapshot_column": "ACTIVE_2026_04_14"
     }
   ]
 }
